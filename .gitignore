@@ -1,0 +1,14 @@
+# Build output
+*.exe
+*.pdb
+*.obj
+
+# Local settings
+settings.ini
+
+# IDE
+.vs/
+*.user
+*.suo
+bin/
+obj/
