@@ -25,6 +25,10 @@ public class Settings
     public bool ShowTray = true;
     public string Lang = "ru";
 
+    // set by Load() for diagnostics; not persisted
+    public bool Existed = false;
+    public bool ParseFailed = false;
+
     public static string Dir()
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MacBookToolkit");
@@ -39,12 +43,19 @@ public class Settings
     public static Settings Load()
     {
         Settings s = new Settings();
+        string fp = FilePath();
+        if (!File.Exists(fp)) return s;
         try
         {
-            string fp = FilePath();
-            if (File.Exists(fp)) s = FromLines(File.ReadAllLines(fp));
+            s = FromLines(File.ReadAllLines(fp));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            s = new Settings();
+            s.ParseFailed = true;
+            Program.LogError("settings load", ex);
+        }
+        s.Existed = true;
         return s;
     }
 
@@ -94,6 +105,7 @@ public class Settings
         DebounceUpMs = ClampInt(DebounceUpMs, 0, 200);
         DebounceDownMs = ClampInt(DebounceDownMs, 0, MaxDebounceDownMs);
         ScreenOffMin = ClampInt(ScreenOffMin, 1, 60);
+        if (DimPct > NormalPct) DimPct = NormalPct;
         if (Lang != "ru" && Lang != "uk" && Lang != "en") Lang = "ru";
     }
 
@@ -116,9 +128,13 @@ public class Settings
             sb.AppendLine("AutoStart=" + AutoStart.ToString());
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
-            File.WriteAllText(FilePath(), sb.ToString());
+            string fp = FilePath();
+            string tmp = fp + ".tmp";
+            File.WriteAllText(tmp, sb.ToString());
+            if (File.Exists(fp)) File.Replace(tmp, fp, null);
+            else File.Move(tmp, fp);
         }
-        catch { }
+        catch (Exception ex) { Program.LogError("settings save", ex); }
     }
 }
 
@@ -145,10 +161,11 @@ public static class L10n
         {"btn_reset","Сброс к умолчанию"},
         {"lbl_lang","Язык:"},
         {"reset_title","Сброс к умолчанию"},
-        {"reset_confirm","Вернуть ВСЕ настройки к подобранным значениям?\n\nЭкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавиатура: 70 / 25 мс\nПитание: экран через 2 мин"},
+        {"reset_confirm","Вернуть все настройки (кроме языка) к подобранным значениям?\n\nЭкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавиатура: 70 / 25 мс\nПитание: экран через 2 мин"},
         {"reset_done","Готово — настройки сброшены к умолчанию."},
         {"tray_show","Показать"}, {"tray_exit","Выход"},
         {"tray_min","Свернуто в трей. Настройки работают."},
+        {"already_running","MacBookToolkit уже запущен — иконка в трее."},
         {"tip_chk_screen","Когда вы не трогаете мышь/клавиатуру заданное время, яркость экрана снижается. При активности возвращается обычная яркость."},
         {"tip_idle","Через сколько секунд бездействия включать затемнение. Минимум 1 сек."},
         {"tip_dim","До какой яркости (в %) затемнять экран. 10% — очень тускло, но читаемо."},
@@ -184,10 +201,11 @@ public static class L10n
         {"btn_reset","Скидання до стандартних"},
         {"lbl_lang","Мова:"},
         {"reset_title","Скидання"},
-        {"reset_confirm","Повернути ВСІ налаштування до підібраних значень?\n\nЕкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавіатура: 70 / 25 мс\nЖивлення: екран через 2 хв"},
+        {"reset_confirm","Повернути всі налаштування (крім мови) до підібраних значень?\n\nЕкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавіатура: 70 / 25 мс\nЖивлення: екран через 2 хв"},
         {"reset_done","Готово — налаштування скинуті до стандартних."},
         {"tray_show","Показати"}, {"tray_exit","Вихід"},
         {"tray_min","Згорнуто в трей. Налаштування працюють."},
+        {"already_running","MacBookToolkit вже запущено — іконка в треї."},
         {"tip_chk_screen","Коли ви не торкаєтесь миші/клавіатури заданий час, яскравість екрана знижується. При активності повертається звичайна."},
         {"tip_idle","Через скільки секунд простою вмикати затемнення. Мінімум 1 сек."},
         {"tip_dim","До якої яскравості (у %) затемнювати екран. 10% — дуже тьмяно, але читабельно."},
@@ -223,10 +241,11 @@ public static class L10n
         {"btn_reset","Reset to defaults"},
         {"lbl_lang","Language:"},
         {"reset_title","Reset to defaults"},
-        {"reset_confirm","Restore ALL settings to the tuned values?\n\nScreen: 15 s / 10% / 100%\nTouchpad: 700 ms\nKeyboard: 70 / 25 ms\nPower: screen off in 2 min"},
+        {"reset_confirm","Restore all settings (language is kept) to the tuned values?\n\nScreen: 15 s / 10% / 100%\nTouchpad: 700 ms\nKeyboard: 70 / 25 ms\nPower: screen off in 2 min"},
         {"reset_done","Done — settings restored to defaults."},
         {"tray_show","Show"}, {"tray_exit","Exit"},
         {"tray_min","Minimized to tray. Settings are running."},
+        {"already_running","MacBookToolkit is already running — look for its tray icon."},
         {"tip_chk_screen","When you do not touch the mouse/keyboard for the set time, screen brightness is reduced. It restores on activity."},
         {"tip_idle","Seconds of inactivity before dimming starts. Minimum 1 s."},
         {"tip_dim","Brightness (%) to dim to. 10% is very dim but readable."},
@@ -256,21 +275,26 @@ public static class L10n
 
 public class KeyDebouncer
 {
+    readonly bool[] _hasUp = new bool[256];
+    readonly bool[] _hasDown = new bool[256];
     readonly uint[] _lastUp = new uint[256];
     readonly uint[] _lastDown = new uint[256];
 
     public void NoteKeyUp(int vk, uint now)
     {
-        _lastUp[vk & 0xFF] = now;
+        int key = vk & 0xFF;
+        _lastUp[key] = now;
+        _hasUp[key] = true;
     }
 
     public bool ShouldDropKeyDown(int vk, uint now, int upMs, int downMs)
     {
         int key = vk & 0xFF;
-        uint dtUp = _lastUp[key] == 0 ? uint.MaxValue : unchecked(now - _lastUp[key]);
-        uint dtDown = _lastDown[key] == 0 ? uint.MaxValue : unchecked(now - _lastDown[key]);
+        uint dtUp = _hasUp[key] ? unchecked(now - _lastUp[key]) : uint.MaxValue;
+        uint dtDown = _hasDown[key] ? unchecked(now - _lastDown[key]) : uint.MaxValue;
         if (dtUp < (uint)upMs || dtDown < (uint)downMs) return true;
         _lastDown[key] = now;
+        _hasDown[key] = true;
         return false;
     }
 }
@@ -293,6 +317,8 @@ public class MainForm : Form
     struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
     [StructLayout(LayoutKind.Sequential)]
     struct KBDLLHOOKSTRUCT { public int vkCode; public int scanCode; public int flags; public int time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct MSLLHOOKSTRUCT { public int ptX; public int ptY; public uint mouseData; public uint flags; public uint time; public IntPtr dwExtraInfo; }
 
     const int WH_KEYBOARD_LL = 13;
     const int WH_MOUSE_LL = 14;
@@ -301,15 +327,24 @@ public class MainForm : Form
     const int WM_KEYUP = 0x0101;
     const int WM_SYSKEYUP = 0x0105;
     const int LLKHF_INJECTED = 0x10;
+    const uint LLMHF_INJECTED = 0x01;
+    const int WM_MOUSEMOVE = 0x0200;
+    const int WM_LBUTTONDOWN = 0x0201;
+    const int WM_RBUTTONDOWN = 0x0204;
+    const int WM_MBUTTONDOWN = 0x0207;
+    const int WM_XBUTTONDOWN = 0x020B;
 
     static LowLevelProc _kbProc;
     static LowLevelProc _msProc;
     static IntPtr _kbHook = IntPtr.Zero;
     static IntPtr _msHook = IntPtr.Zero;
     static uint _lastKeyTick = 0;
+    static bool _haveKeyTick = false;
     static readonly KeyDebouncer _debounce = new KeyDebouncer();
     static Settings _s;
     static bool _dimmed = false;
+    static bool _brightnessErrorLogged = false;
+    static bool _systemApplied = false;
 
     TabControl tabs;
     CheckBox chkScreen;
@@ -349,13 +384,11 @@ public class MainForm : Form
         BuildUi();
         ApplyLanguage();
         InstallHooks();
-        ApplyPower();
-        SetAutoStart(_s.AutoStart);
         idleTimer = new Timer();
         idleTimer.Interval = 500;
         idleTimer.Tick += IdleTick;
         idleTimer.Start();
-        SetBrightness(_s.ScreenEnabled ? _s.NormalPct : -1);
+        if (!_s.ParseFailed) SetBrightness(_s.ScreenEnabled ? _s.NormalPct : -1);
     }
 
     Label AddLabel(string key, int y, Control parent)
@@ -573,12 +606,15 @@ public class MainForm : Form
         _s.ScreenOffMin = (int)numScreenOff.Value;
         _s.AutoStart = chkAutoStart.Checked;
         _s.ShowTray = chkTray.Checked;
+        if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
         _s.Save();
-        ApplyPower();
+        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        SetBrightness(_s.NormalPct);
-        _dimmed = false;
+        if (_dimmed || _s.ScreenEnabled)
+        {
+            _dimmed = !SetBrightness(_s.NormalPct);
+        }
     }
 
     void ResetClick(object sender, EventArgs e)
@@ -604,11 +640,10 @@ public class MainForm : Form
         chkTray.Checked = d.ShowTray;
         _loading = false;
         _s.Save();
-        ApplyPower();
+        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        SetBrightness(d.NormalPct);
-        _dimmed = false;
+        _dimmed = !SetBrightness(d.NormalPct);
         MessageBox.Show(L10n.T("reset_done"), "MacBookToolkit");
     }
 
@@ -623,6 +658,7 @@ public class MainForm : Form
     {
         tray.Visible = false;
         idleTimer.Stop();
+        RestoreBrightnessIfDimmed();
         RemoveHooks();
         Application.Exit();
     }
@@ -645,7 +681,32 @@ public class MainForm : Form
             tray.ShowBalloonTip(1500, "MacBookToolkit", L10n.T("tray_min"), ToolTipIcon.Info);
             return;
         }
+        RestoreBrightnessIfDimmed();
         base.OnFormClosing(e);
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (_systemApplied || _s == null || _s.ParseFailed) return;
+        _systemApplied = true;
+        SetAutoStart(_s.AutoStart);
+        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        try
+        {
+            if (idleTimer != null) { idleTimer.Stop(); idleTimer.Dispose(); idleTimer = null; }
+            RemoveHooks();
+            if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
+            if (tip != null) { tip.Dispose(); tip = null; }
+            if (Font != null) Font.Dispose();
+            if (Icon != null) Icon.Dispose();
+        }
+        catch { }
+        base.OnFormClosed(e);
     }
 
     void ApplyPower()
@@ -657,7 +718,7 @@ public class MainForm : Form
             Run("powercfg", "/setdcvalueindex SCHEME_CURRENT SUB_VIDEO VIDEOIDLE " + sec.ToString());
             Run("powercfg", "/setactive SCHEME_CURRENT");
         }
-        catch { }
+        catch (Exception ex) { Program.LogError("apply power", ex); }
     }
 
     static void Run(string exe, string args)
@@ -667,10 +728,14 @@ public class MainForm : Form
             ProcessStartInfo psi = new ProcessStartInfo(exe, args);
             psi.CreateNoWindow = true;
             psi.UseShellExecute = false;
-            Process p = Process.Start(psi);
-            if (p != null) p.WaitForExit(3000);
+            using (Process p = Process.Start(psi))
+            {
+                if (p == null) { Program.LogNote("run", exe + ": not started"); return; }
+                if (!p.WaitForExit(5000)) { Program.LogNote("run", exe + " " + args + ": timeout"); return; }
+                if (p.ExitCode != 0) Program.LogNote("run", exe + " " + args + ": exit " + p.ExitCode);
+            }
         }
-        catch { }
+        catch (Exception ex) { Program.LogError("run " + exe, ex); }
     }
 
     void SetAutoStart(bool on)
@@ -687,12 +752,13 @@ public class MainForm : Form
         catch { }
     }
 
-    static void SetBrightness(int pct)
+    static bool SetBrightness(int pct)
     {
-        if (pct < 0) return;
+        if (pct < 0) return false;
         if (pct > 100) pct = 100;
         try
         {
+            int ok = 0;
             using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightnessMethods"))
             using (ManagementObjectCollection monitors = searcher.Get())
             {
@@ -700,13 +766,20 @@ public class MainForm : Form
                 {
                     using (m)
                     {
-                        m.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)pct });
+                        try { m.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)pct }); ok++; }
+                        catch (Exception ex) { Program.LogNote("brightness", "one monitor failed: " + ex.Message); }
                     }
-                    break;
                 }
             }
+            if (ok > 0) { _brightnessErrorLogged = false; return true; }
+            if (!_brightnessErrorLogged) { _brightnessErrorLogged = true; Program.LogNote("brightness", "no WMI brightness control available"); }
+            return false;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            if (!_brightnessErrorLogged) { _brightnessErrorLogged = true; Program.LogError("brightness", ex); }
+            return false;
+        }
     }
 
     static uint IdleMs()
@@ -727,13 +800,11 @@ public class MainForm : Form
         bool wantDim = WantsDim(IdleMs(), _s);
         if (wantDim && !_dimmed)
         {
-            SetBrightness(_s.DimPct);
-            _dimmed = true;
+            if (SetBrightness(_s.DimPct)) _dimmed = true;
         }
         else if (!wantDim && _dimmed)
         {
-            SetBrightness(_s.NormalPct);
-            _dimmed = false;
+            if (SetBrightness(_s.NormalPct)) _dimmed = false;
         }
     }
 
@@ -746,6 +817,7 @@ public class MainForm : Form
             case 0x21: case 0x22: case 0x23: case 0x24:
             case 0x10: case 0x11: case 0x12:
             case 0xA0: case 0xA1: case 0xA2: case 0xA3: case 0xA4: case 0xA5:
+            case 0x5B: case 0x5C: case 0x5D: case 0x2C:
                 return true;
             default:
                 return false;
@@ -754,36 +826,55 @@ public class MainForm : Form
 
     static IntPtr KbCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        try
         {
-            KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-            int vk = k.vkCode & 0xFF;
-            bool injected = (k.flags & LLKHF_INJECTED) != 0;
-            uint now = (uint)Environment.TickCount;
-            bool isDown = (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN);
-            bool isUp = (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP);
-
-            if (!injected)
+            if (nCode >= 0 && _s != null)
             {
-                if (isDown) _lastKeyTick = now;
-                if (_s.KeyEnabled && !Excluded(vk))
+                KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                int vk = k.vkCode & 0xFF;
+                bool injected = (k.flags & LLKHF_INJECTED) != 0;
+                uint now = (uint)Environment.TickCount;
+                bool isDown = (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN);
+                bool isUp = (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP);
+
+                if (!injected)
                 {
-                    if (isUp) _debounce.NoteKeyUp(vk, now);
-                    else if (isDown && _debounce.ShouldDropKeyDown(vk, now, _s.DebounceUpMs, _s.DebounceDownMs))
-                        return (IntPtr)1;
+                    if (isDown) { _lastKeyTick = now; _haveKeyTick = true; }
+                    if (_s.KeyEnabled && !Excluded(vk))
+                    {
+                        if (isUp) _debounce.NoteKeyUp(vk, now);
+                        else if (isDown && _debounce.ShouldDropKeyDown(vk, now, _s.DebounceUpMs, _s.DebounceDownMs))
+                            return (IntPtr)1;
+                    }
                 }
             }
         }
+        catch (Exception ex) { Program.LogError("keyboard hook", ex); }
         return CallNextHookEx(_kbHook, nCode, wParam, lParam);
     }
 
     static IntPtr MsCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && _s.TouchEnabled && _s.BlockMs > 0 && _lastKeyTick != 0)
+        try
         {
-            uint dt = (uint)Environment.TickCount - _lastKeyTick;
-            if (dt < (uint)_s.BlockMs) return (IntPtr)1;
+            if (nCode >= 0 && _s != null && _s.TouchEnabled && _s.BlockMs > 0 && _haveKeyTick)
+            {
+                int msg = wParam.ToInt32();
+                bool blockable = msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN ||
+                                 msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN;
+                if (blockable)
+                {
+                    MSLLHOOKSTRUCT m = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                    bool injected = (m.flags & LLMHF_INJECTED) != 0;
+                    if (!injected)
+                    {
+                        uint dt = unchecked((uint)Environment.TickCount - _lastKeyTick);
+                        if (dt < (uint)_s.BlockMs) return (IntPtr)1;
+                    }
+                }
+            }
         }
+        catch (Exception ex) { Program.LogError("mouse hook", ex); }
         return CallNextHookEx(_msHook, nCode, wParam, lParam);
     }
 
@@ -796,6 +887,29 @@ public class MainForm : Form
             IntPtr hMod = GetModuleHandle(null);
             _kbHook = SetWindowsHookEx(WH_KEYBOARD_LL, _kbProc, hMod, 0);
             _msHook = SetWindowsHookEx(WH_MOUSE_LL, _msProc, hMod, 0);
+        }
+        catch (Exception ex) { Program.LogError("install hooks", ex); }
+        if (_kbHook == IntPtr.Zero)
+        {
+            Program.LogNote("install hooks", "keyboard hook failed, win32 error " + Marshal.GetLastWin32Error());
+            _s.KeyEnabled = false;
+            chkKey.Checked = false;
+            chkKey.Enabled = false;
+        }
+        if (_msHook == IntPtr.Zero)
+        {
+            Program.LogNote("install hooks", "mouse hook failed, win32 error " + Marshal.GetLastWin32Error());
+            _s.TouchEnabled = false;
+            chkTouch.Checked = false;
+            chkTouch.Enabled = false;
+        }
+    }
+
+    public static void RestoreBrightnessIfDimmed()
+    {
+        try
+        {
+            if (_dimmed && _s != null) { SetBrightness(_s.NormalPct); _dimmed = false; }
         }
         catch { }
     }
@@ -819,25 +933,45 @@ public class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e) { LogError("UI thread", e.Exception); };
-        AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { LogError("AppDomain", e.ExceptionObject as Exception); };
+        Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
+        {
+            MainForm.RestoreBrightnessIfDimmed();
+            LogError("UI thread", e.Exception);
+        };
+        AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
+        {
+            MainForm.RestoreBrightnessIfDimmed();
+            LogError("AppDomain", e.ExceptionObject as Exception);
+        };
         bool createdNew;
         using (System.Threading.Mutex mutex = new System.Threading.Mutex(true, "MacBookToolkit_SingleInstance", out createdNew))
         {
-            if (!createdNew) return;
+            if (!createdNew)
+            {
+                MessageBox.Show(L10n.T("already_running"), "MacBookToolkit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             Application.Run(new MainForm());
         }
     }
 
-    static void LogError(string source, Exception ex)
+    public static void LogNote(string source, string note)
+    {
+        WriteLog("[" + source + "] " + note);
+    }
+
+    public static void LogError(string source, Exception ex)
+    {
+        WriteLog("[" + source + "] " + (ex == null ? "error" : ex.ToString()));
+    }
+
+    static void WriteLog(string text)
     {
         try
         {
             string dir = Settings.Dir();
             Directory.CreateDirectory(dir);
-            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " [" + source + "] " +
-                (ex == null ? "unknown exception" : ex.ToString()) + Environment.NewLine;
-            File.AppendAllText(Path.Combine(dir, "errors.log"), line);
+            File.AppendAllText(Path.Combine(dir, "errors.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + text + Environment.NewLine);
         }
         catch { }
     }

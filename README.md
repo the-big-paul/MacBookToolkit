@@ -162,6 +162,20 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 - Added a proper Windows version resource (file version **1.1.0.0**).
 - Unhandled exceptions are now logged to `%APPDATA%\MacBookToolkit\errors.log`.
 - Fixed a WMI handle leak in the brightness code.
+- Fixed: brightness could stay dim if the app exited while dimmed — it is now
+  restored on exit.
+- Fixed: the touchpad guard swallowed mouse button-up and wheel events (a drag
+  could get stuck, scrolling was lost); it now blocks only cursor movement and
+  button-downs, and ignores synthetic input.
+- Fixed: failed brightness control no longer leaves a phantom "dimmed" state.
+- `settings.ini` is written atomically (temp file + replace); write errors are logged.
+- Hook installation failures are detected, logged, and the affected option is disabled.
+- A second launch now shows a message instead of silently doing nothing.
+- First run / unreadable settings no longer silently re-enable autostart or
+  rewrite the power plan.
+- `powercfg` runs off the UI thread, so startup and saving no longer freeze.
+- Win / Apps / PrintScreen keys are excluded from the key debounce.
+- Fixed process/WMI handle and tray/timer/icon leaks.
 
 **v1.0** — first public release.
 
@@ -326,6 +340,22 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 - Добавлен нормальный Version-ресурс Windows (версия файла **1.1.0.0**).
 - Необработанные исключения теперь пишутся в `%APPDATA%\MacBookToolkit\errors.log`.
 - Исправлена утечка WMI-хэндлов в коде яркости.
+- Исправлено: яркость могла остаться приглушённой, если закрыть программу в этот
+  момент — теперь она восстанавливается при выходе.
+- Исправлено: защита тачпада глотала button-up и колесо мыши (залипал драг,
+  терялся скролл) — теперь блокируются только движение и button-down,
+  синтетический ввод игнорируется.
+- Исправлено: при недоступном управлении яркостью больше нет «фантомного»
+  состояния «затемнено».
+- `settings.ini` пишется атомарно (временный файл + замена), ошибки записи логируются.
+- Неудачная установка хуков теперь обнаруживается, логируется, а соответствующая
+  опция отключается.
+- Второй запуск показывает сообщение, а не молчит.
+- Первый запуск / нечитаемые настройки больше не включают молча автозапуск и не
+  перезаписывают план питания.
+- `powercfg` выполняется не в UI-потоке — запуск и сохранение больше не подвешивают окно.
+- Win / Apps / PrintScreen исключены из дебаунса клавиш.
+- Исправлены утечки хэндлов (процессы, WMI) и объектов трея/таймера/иконки.
 
 **v1.0** — первый публичный релиз.
 

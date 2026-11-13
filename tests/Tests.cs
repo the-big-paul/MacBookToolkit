@@ -24,6 +24,10 @@ public static class Tests
         TestNormalizeIdempotent();
         TestDebouncer();
         TestDebouncerAutoRepeatLimit();
+        TestDebouncerTickZero();
+        TestExcludedKeys();
+        TestDimClamp();
+        TestLoadFlags();
         TestIdleDecision();
         TestLocalization();
         TestVersion();
@@ -54,13 +58,16 @@ public static class Tests
     static void TestParsingAndClamping()
     {
         Settings lo = Settings.FromLines(new string[] {
-            "ScreenEnabled=False", "IdleSec=0", "DimPct=999", "NormalPct=-10",
+            "ScreenEnabled=False", "IdleSec=0", "DimPct=999", "NormalPct=100",
             "BlockMs=1", "DebounceUpMs=-1", "DebounceDownMs=100",
             "ScreenOffMin=0", "Lang=xx"
         });
         Check("clamp IdleSec min", lo.IdleSec == 1, "" + lo.IdleSec);
         Check("clamp DimPct max", lo.DimPct == 100, "" + lo.DimPct);
-        Check("clamp NormalPct min", lo.NormalPct == 1, "" + lo.NormalPct);
+
+        Settings np = Settings.FromLines(new string[] { "NormalPct=-10", "DimPct=50" });
+        Check("clamp NormalPct min", np.NormalPct == 1, "" + np.NormalPct);
+        Check("DimPct follows lowered NormalPct", np.DimPct == 1, "" + np.DimPct);
         Check("clamp BlockMs min", lo.BlockMs == 50, "" + lo.BlockMs);
         Check("clamp DebounceUpMs min", lo.DebounceUpMs == 0, "" + lo.DebounceUpMs);
         Check("clamp DebounceDownMs max", lo.DebounceDownMs == 30, "" + lo.DebounceDownMs);
@@ -153,6 +160,40 @@ public static class Tests
         Check("repeat 32ms blocked at downMs=40 (why cap exists)", b.ShouldDropKeyDown(65, 1112, 70, 40) == true, "");
     }
 
+    static void TestDebouncerTickZero()
+    {
+        // Environment.TickCount can legitimately be 0 once per ~49.7 days
+        KeyDebouncer d = new KeyDebouncer();
+        d.NoteKeyUp(65, 0);
+        Check("tick 0: release at 0 tracked", d.ShouldDropKeyDown(65, 10, 70, 25) == true, "");
+        KeyDebouncer e = new KeyDebouncer();
+        Check("tick 0: first press allowed", e.ShouldDropKeyDown(65, 0, 70, 25) == false, "");
+    }
+
+    static void TestExcludedKeys()
+    {
+        MethodInfo m = typeof(MainForm).GetMethod("Excluded", BindingFlags.NonPublic | BindingFlags.Static);
+        if (m == null) { Check("Excluded exists", false, "reflection failed"); return; }
+        int[] excluded = { 0x08, 0x09, 0x0D, 0x1B, 0x2E, 0x25, 0x26, 0x27, 0x28, 0x21, 0x22, 0x23, 0x24, 0x10, 0x11, 0x12, 0xA0, 0xA5, 0x5B, 0x5C, 0x5D, 0x2C };
+        bool all = true;
+        foreach (int vk in excluded) { if ((bool)m.Invoke(null, new object[] { vk }) != true) { all = false; } }
+        Check("excluded keys pass through", all, "");
+        Check("normal letter A is debounced", (bool)m.Invoke(null, new object[] { 0x41 }) == false, "");
+    }
+
+    static void TestDimClamp()
+    {
+        Settings s = Settings.FromLines(new string[] { "DimPct=90", "NormalPct=50" });
+        Check("DimPct clamped to NormalPct", s.DimPct == 50, "" + s.DimPct);
+    }
+
+    static void TestLoadFlags()
+    {
+        Settings s = new Settings();
+        Check("fresh defaults: Existed=false", s.Existed == false, "");
+        Check("fresh defaults: ParseFailed=false", s.ParseFailed == false, "");
+    }
+
     static void TestIdleDecision()
     {
         MethodInfo m = typeof(MainForm).GetMethod("WantsDim", BindingFlags.NonPublic | BindingFlags.Static);
@@ -197,9 +238,9 @@ public static class Tests
         Dictionary<string, string> ru = (Dictionary<string, string>)t.GetField("ru", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> uk = (Dictionary<string, string>)t.GetField("uk", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> en = (Dictionary<string, string>)t.GetField("en", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-        Check("ru key count", ru.Count == 39, "" + ru.Count);
-        Check("uk key count", uk.Count == 39, "" + uk.Count);
-        Check("en key count", en.Count == 39, "" + en.Count);
+        Check("ru key count", ru.Count == 40, "" + ru.Count);
+        Check("uk key count", uk.Count == 40, "" + uk.Count);
+        Check("en key count", en.Count == 40, "" + en.Count);
         bool same = true;
         foreach (string k in ru.Keys) if (!uk.ContainsKey(k) || !en.ContainsKey(k)) same = false;
         foreach (string k in uk.Keys) if (!ru.ContainsKey(k)) same = false;
