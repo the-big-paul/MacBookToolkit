@@ -304,7 +304,7 @@ public class ThemedCard : Panel, IThemed
         if (!string.IsNullOrEmpty(Title))
         {
             int band = Ui.Px(30);
-            using (Font f = new Font("Segoe UI", 10.5f, FontStyle.Bold))
+            using (Font f = new Font(Font, FontStyle.Bold))
             {
                 TextRenderer.DrawText(g, Title, f,
                     new Rectangle(Ui.Px(14), 0, Width - Ui.Px(28), band),
@@ -321,9 +321,23 @@ public class ThemedLabel : Control, IThemed
     public Image IconImage;
     public bool Muted = false;
     public bool Bold = false;
+    public bool AutoFit = true;
+    public int MaxWidth = 0;
 
     ThemeColors _t;
     Color _surface;
+
+    public void FitContent()
+    {
+        if (!AutoFit || MaxWidth <= 0 || !IsHandleCreated) return;
+        int iconPart = (!string.IsNullOrEmpty(IconGlyph) || IconImage != null) ? Ui.Px(16) + Ui.Px(8) : 0;
+        Size ts = TextRenderer.MeasureText(Text, Font);
+        int want = iconPart + ts.Width + Ui.Px(2);
+        Width = Math.Max(Ui.Px(30), Math.Min(MaxWidth, want));
+    }
+
+    protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); FitContent(); }
+    protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); FitContent(); }
 
     public ThemedLabel()
     {
@@ -950,7 +964,7 @@ public class ThemedCaption : Control, IThemed
         catch { }
 
         Color titleColor = t.Fore;
-        using (Font f = new Font("Segoe UI", 9.5f, FontStyle.Bold))
+        using (Font f = new Font(Font, FontStyle.Bold))
         {
             Rectangle rt = new Rectangle(Ui.Px(32), 0, Width - Ui.Px(32) - BtnW * 2 - Ui.Px(8), Height);
             TextRenderer.DrawText(g, Title, f, rt, titleColor,
@@ -958,7 +972,7 @@ public class ThemedCaption : Control, IThemed
         }
         if (!string.IsNullOrEmpty(VersionText))
         {
-            using (Font f = new Font("Segoe UI", 8f))
+            using (Font f = new Font(Font.FontFamily, Font.Size - 1f))
             {
                 Color vc = _versionHover ? t.Accent : t.Sub;
                 TextRenderer.DrawText(g, VersionText, f, VersionRect, vc,
@@ -1152,5 +1166,90 @@ public static class Flags
             using (Pen pen = new Pen(Color.FromArgb(90, 0, 0, 0))) g.DrawRectangle(pen, 0, 0, w - 1, h - 1);
         }
         return bmp;
+    }
+}
+
+// ---------- Custom tooltip balloon ----------
+public class TipBalloon : Form
+{
+    static TipBalloon _open;
+    static System.Windows.Forms.Timer _hideTimer;
+    string _text;
+    ThemeColors _t;
+
+    public static void ShowTip(string text, Point screen, ThemeColors theme)
+    {
+        HideTip();
+        if (string.IsNullOrEmpty(text)) return;
+        TipBalloon b = new TipBalloon(text, theme);
+        b.ShowAt(screen);
+        _open = b;
+        _hideTimer = new System.Windows.Forms.Timer();
+        _hideTimer.Interval = 12000;
+        _hideTimer.Tick += delegate { _hideTimer.Stop(); HideTip(); };
+        _hideTimer.Start();
+    }
+
+    public static void HideTip()
+    {
+        if (_hideTimer != null) { _hideTimer.Stop(); _hideTimer.Dispose(); _hideTimer = null; }
+        if (_open != null)
+        {
+            try { _open.Close(); _open.Dispose(); } catch { }
+            _open = null;
+        }
+    }
+
+    TipBalloon(string text, ThemeColors theme)
+    {
+        _text = text;
+        _t = theme;
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        TopMost = true;
+        StartPosition = FormStartPosition.Manual;
+        Font = SystemFonts.MessageBoxFont;
+        int maxW = Ui.Px(330);
+        Size ts = TextRenderer.MeasureText(text, Font,
+            new Size(maxW - Ui.Px(24), 0), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+        ClientSize = new Size(ts.Width + Ui.Px(24), ts.Height + Ui.Px(18));
+        BackColor = theme.Card;
+        using (GraphicsPath gp = Ui.Round(new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), Ui.Px(6)))
+            Region = new Region(gp);
+    }
+
+    protected override bool ShowWithoutActivation { get { return true; } }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ClassStyle |= 0x20000;
+            return cp;
+        }
+    }
+
+    void ShowAt(Point screen)
+    {
+        Point p = new Point(screen.X + Ui.Px(14), screen.Y + Ui.Px(20));
+        Rectangle wa = Screen.FromPoint(screen).WorkingArea;
+        if (p.X + Width > wa.Right) p.X = wa.Right - Width - Ui.Px(4);
+        if (p.Y + Height > wa.Bottom) p.Y = screen.Y - Height - Ui.Px(8);
+        if (p.X < wa.Left) p.X = wa.Left + Ui.Px(4);
+        if (p.Y < wa.Top) p.Y = wa.Top + Ui.Px(4);
+        Location = p;
+        Show();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (SolidBrush b = new SolidBrush(_t.Card)) g.FillRectangle(b, ClientRectangle);
+        using (Pen pen = new Pen(_t.Border)) g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        TextRenderer.DrawText(g, _text, Font,
+            new Rectangle(Ui.Px(12), Ui.Px(9), Width - Ui.Px(24), Height - Ui.Px(18)),
+            _t.Fore, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.Left);
     }
 }

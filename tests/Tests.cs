@@ -30,10 +30,11 @@ public static class Tests
         TestDimClamp();
         TestLoadFlags();
         TestThemeAndTopMost();
-        TestAccentAndCpuSettings();
+        TestAccentSettings();
         TestAccentPalette();
-        TestCpuTempConversion();
         TestTooltips();
+        TestUnits();
+        TestAutoTuner();
         TestNoEmoji();
         TestIdleDecision();
         TestLocalization();
@@ -63,7 +64,6 @@ public static class Tests
         Check("defaults TopMost", s.TopMost == false, "");
         Check("defaults Theme", s.Theme == "system", s.Theme);
         Check("defaults Accent", s.Accent == "system", s.Accent);
-        Check("defaults ShowCpuTemp", s.ShowCpuTemp == false, "");
     }
 
     static void TestParsingAndClamping()
@@ -207,14 +207,12 @@ public static class Tests
         Check("fresh defaults: ParseFailed=false", s.ParseFailed == false, "");
     }
 
-    static void TestAccentAndCpuSettings()
+    static void TestAccentSettings()
     {
-        Settings s = Settings.FromLines(new string[] { "Accent=neon", "ShowCpuTemp=maybe" });
+        Settings s = Settings.FromLines(new string[] { "Accent=neon" });
         Check("invalid Accent -> system", s.Accent == "system", s.Accent);
-        Check("invalid ShowCpuTemp -> default", s.ShowCpuTemp == false, "");
-        Settings b = Settings.FromLines(new string[] { "Accent=blue", "ShowCpuTemp=True" });
+        Settings b = Settings.FromLines(new string[] { "Accent=blue" });
         Check("Accent=blue kept", b.Accent == "blue", b.Accent);
-        Check("ShowCpuTemp parsed", b.ShowCpuTemp == true, "");
     }
 
     static void TestAccentPalette()
@@ -226,25 +224,55 @@ public static class Tests
         Check("theme dark from palette", ThemeManager.Build(true, ThemeManager.AccentColorFor("teal")).Dark, "");
     }
 
-    static void TestCpuTempConversion()
+    static void TestUnits()
     {
-        double c = CpuTemp.FromKelvinTenths(2982);
-        Check("kelvin tenths 2982 -> 25.05 C", Math.Abs(c - 25.05) < 0.05, "" + c);
-        double z = CpuTemp.FromKelvinTenths(2731);
-        Check("kelvin tenths 2731 -> -0.05 C", Math.Abs(z + 0.05) < 0.06, "" + z);
+        foreach (string lang in new string[] { "ru", "uk", "en" })
+        {
+            Texts.Lang = lang;
+            foreach (string k in new string[] { "unit_sec", "unit_ms", "unit_min", "unit_pct" })
+                Check("unit " + lang + " " + k, Texts.T(k) != k && Texts.T(k).Length > 0, Texts.T(k));
+        }
+        Texts.Lang = "ru";
+        Check("ru min unit", Texts.T("unit_min") == "мин", Texts.T("unit_min"));
+        Texts.Lang = "uk";
+        Check("uk min unit", Texts.T("unit_min") == "хв", Texts.T("unit_min"));
+        Texts.Lang = "ru";
+    }
+
+    static void TestAutoTuner()
+    {
+        Settings s = new Settings();
+        s.DebounceDownMs = 20;
+        s.DebounceUpMs = 70;
+        Check("autotune no drops", !AutoTuner.Apply(s, 1, 1), "");
+        Check("autotune down lowered", AutoTuner.Apply(s, 0, AutoTuner.DropThreshold) && s.DebounceDownMs == 15, "" + s.DebounceDownMs);
+        Check("autotune up lowered", AutoTuner.Apply(s, AutoTuner.DropThreshold, 0) && s.DebounceUpMs == 60, "" + s.DebounceUpMs);
+        Settings floor = new Settings();
+        floor.DebounceDownMs = 5;
+        floor.DebounceUpMs = 20;
+        AutoTuner.Apply(floor, 100, 100);
+        Check("autotune floors", floor.DebounceDownMs == 5 && floor.DebounceUpMs == 20, floor.DebounceDownMs + "/" + floor.DebounceUpMs);
+
+        KeyDebouncer d = new KeyDebouncer();
+        d.NoteKeyUp(65, 1000);
+        bool dropUp = d.ShouldDropKeyDown(65, 1010, 70, 20);
+        Check("debouncer counts up drop", dropUp && d.DroppedUp == 1, "up=" + d.DroppedUp);
+        d.ResetDrops();
+        Check("debouncer reset", d.DroppedUp == 0 && d.DroppedDown == 0, "");
     }
 
     static void TestNoEmoji()
     {
         string[] uiKeys = {
-            "sec_display","sec_key","sec_touch","sec_window","sec_options",
+            "sec_display","sec_key","sec_touch","sec_options",
             "chk_screen","lbl_idle","lbl_dim","lbl_normal","lbl_screenoff",
             "chk_touch","lbl_block","chk_key","lbl_up","lbl_down",
             "chk_topmost","lbl_theme","theme_system","theme_light","theme_dark",
             "lbl_accent","accent_system","accent_blue","accent_purple","accent_pink","accent_red",
             "accent_orange","accent_yellow","accent_green","accent_teal","accent_gray",
-            "chk_autostart","chk_tray","chk_cpu_temp","lbl_lang","btn_save","btn_reset",
-            "tray_show","tray_topmost","tray_autostart","tray_exit","tray_cpu","cpu_na"
+            "chk_autostart","chk_tray","lbl_lang","btn_save","btn_reset",
+            "tray_show","tray_topmost","tray_autostart","tray_exit",
+            "unit_sec","unit_ms","unit_min","unit_pct"
         };
         foreach (string lang in new string[] { "ru", "uk", "en" })
         {
@@ -265,7 +293,7 @@ public static class Tests
         string[] keys = {
             "tip_chk_screen","tip_idle","tip_dim","tip_normal","tip_screenoff","tip_chk_touch","tip_block",
             "tip_chk_key","tip_up","tip_down","tip_topmost","tip_theme","tip_accent",
-            "tip_autostart","tip_tray","tip_cpu_temp","tip_lang","tip_save","tip_reset","version_tip"
+            "tip_autostart","tip_tray","tip_lang","tip_save","tip_reset","version_tip"
         };
         foreach (string lang in new string[] { "ru", "uk", "en" })
         {

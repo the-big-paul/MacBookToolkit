@@ -25,7 +25,6 @@ public class Settings
     public bool AutoStart = true;
     public bool ShowTray = true;
     public bool TopMost = false;
-    public bool ShowCpuTemp = false;
     public string Lang = "ru";
     public string Theme = "system";
     public string Accent = "system";
@@ -90,7 +89,6 @@ public class Settings
                 case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
                 case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
                 case "TopMost": if (bool.TryParse(v, out b)) s.TopMost = b; break;
-                case "ShowCpuTemp": if (bool.TryParse(v, out b)) s.ShowCpuTemp = b; break;
                 case "Lang": s.Lang = v; break;
                 case "Theme": s.Theme = v; break;
                 case "Accent": s.Accent = v; break;
@@ -141,7 +139,6 @@ public class Settings
             sb.AppendLine("AutoStart=" + AutoStart.ToString());
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
             sb.AppendLine("TopMost=" + TopMost.ToString());
-            sb.AppendLine("ShowCpuTemp=" + ShowCpuTemp.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
             sb.AppendLine("Theme=" + Theme.ToString());
             sb.AppendLine("Accent=" + Accent.ToString());
@@ -162,6 +159,15 @@ public class KeyDebouncer
     readonly uint[] _lastUp = new uint[256];
     readonly uint[] _lastDown = new uint[256];
 
+    public int DroppedUp;
+    public int DroppedDown;
+
+    public void ResetDrops()
+    {
+        DroppedUp = 0;
+        DroppedDown = 0;
+    }
+
     public void NoteKeyUp(int vk, uint now)
     {
         int key = vk & 0xFF;
@@ -174,10 +180,38 @@ public class KeyDebouncer
         int key = vk & 0xFF;
         uint dtUp = _hasUp[key] ? unchecked(now - _lastUp[key]) : uint.MaxValue;
         uint dtDown = _hasDown[key] ? unchecked(now - _lastDown[key]) : uint.MaxValue;
-        if (dtUp < (uint)upMs || dtDown < (uint)downMs) return true;
+        bool upHit = dtUp < (uint)upMs;
+        bool downHit = dtDown < (uint)downMs;
+        if (upHit || downHit)
+        {
+            if (upHit) DroppedUp++;
+            if (downHit) DroppedDown++;
+            return true;
+        }
         _lastDown[key] = now;
         _hasDown[key] = true;
         return false;
+    }
+}
+
+public static class AutoTuner
+{
+    public const int DropThreshold = 6;
+
+    public static bool Apply(Settings s, int droppedUp, int droppedDown)
+    {
+        bool changed = false;
+        if (droppedDown >= DropThreshold)
+        {
+            int v = Math.Max(5, s.DebounceDownMs - 5);
+            if (v != s.DebounceDownMs) { s.DebounceDownMs = v; changed = true; }
+        }
+        if (droppedUp >= DropThreshold)
+        {
+            int v = Math.Max(20, s.DebounceUpMs - 10);
+            if (v != s.DebounceUpMs) { s.DebounceUpMs = v; changed = true; }
+        }
+        return changed;
     }
 }
 
@@ -196,8 +230,6 @@ public class MainForm : Form
     static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
     [DllImport("dwmapi.dll")]
     static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-    [DllImport("user32.dll", SetLastError = true)]
-    static extern bool DestroyIcon(IntPtr hIcon);
     [DllImport("user32.dll")]
     static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
@@ -237,25 +269,27 @@ public class MainForm : Form
     ThemeColors _theme;
     Dictionary<Control, string> _textKeys = new Dictionary<Control, string>();
     Dictionary<Control, string> _tipKeys = new Dictionary<Control, string>();
-    ToolTip tip;
+    Dictionary<ThemedSpinner, string> _unitKeys = new Dictionary<ThemedSpinner, string>();
 
-    ThemedCard cardScreen, cardKey, cardTouch, cardWindow, cardOptions;
+    ThemedCard cardScreen, cardKey, cardTouch, cardOptions;
     ThemedCaption caption;
     ThemedLabel lblIdle, lblDim, lblNormal;
     ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblAccent, lblLang;
-    ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray, chkCpuTemp;
+    ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray;
     ThemedSpinner numIdle, numDim, numNormal, numBlock, numUp, numDown, numScreenOff;
     ThemedSelect cbLang, cbTheme, cbAccent;
     ThemedButton btnSave, btnReset;
     NotifyIcon tray;
-    MenuItem miShow, miTopMost, miAutoStart, miCpu, miExit;
+    MenuItem miShow, miTopMost, miAutoStart, miExit;
     System.Windows.Forms.Timer idleTimer;
     System.Windows.Forms.Timer themeWatch;
-    System.Windows.Forms.Timer tempTimer;
-    bool _tempInFlight = false;
-    bool _cpuTempOk = false;
-    double _cpuTempC = 0;
-    Icon _tempTrayIcon;
+    System.Windows.Forms.Timer tipTimer;
+    System.Windows.Forms.Timer tuneTimer;
+    Control _tipControl;
+    string _tipKey;
+    Point _tipPos;
+    bool _tipShown;
+    int _tipAt;
     bool _loading = false;
     bool _brightnessOk = false;
     int _brightnessTries = 0;
@@ -265,7 +299,7 @@ public class MainForm : Form
         _s = Settings.Load();
         Texts.Lang = _s.Lang;
         AutoScaleMode = AutoScaleMode.None;
-        Font = new Font("Segoe UI", 9f);
+        Font = SystemFonts.MessageBoxFont;
         BuildUi();
         ApplyLanguage();
         ApplyThemeNow();
@@ -279,11 +313,15 @@ public class MainForm : Form
         themeWatch.Interval = 1500;
         themeWatch.Tick += delegate { WatchSystemTheme(); };
         themeWatch.Start();
-        tempTimer = new System.Windows.Forms.Timer();
-        tempTimer.Interval = 5000;
-        tempTimer.Tick += delegate { RequestCpuTemp(); };
-        tempTimer.Start();
-        RequestCpuTemp();
+        tipTimer = new System.Windows.Forms.Timer();
+        tipTimer.Interval = 120;
+        tipTimer.Tick += TipTick;
+        tipTimer.Start();
+        tuneTimer = new System.Windows.Forms.Timer();
+        tuneTimer.Interval = 15000;
+        tuneTimer.Tick += TuneTick;
+        tuneTimer.Start();
+        Move += delegate { TipBalloon.HideTip(); };
     }
 
     // ---------- UI building ----------
@@ -304,40 +342,43 @@ public class MainForm : Form
         return c;
     }
 
-    ThemedLabel Lbl(string key, string icon, double x, double y, double w, double h, Control parent, bool muted, bool bold)
+    ThemedLabel Lbl(string key, string icon, double x, double y, double w, double h, Control parent)
     {
         ThemedLabel l = new ThemedLabel();
-        l.Muted = muted;
-        l.Bold = bold;
         l.IconGlyph = icon;
         l.Text = Texts.T(key);
+        l.MaxWidth = (int)Ui.Px(w);
         l.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
         _textKeys[l] = key;
         Add(parent, l);
         return l;
     }
 
-    ThemedCheckBox Chk(string key, string icon, double x, double y, double w, Control parent, bool val)
+    ThemedCheckBox Chk(double x, double y, Control parent, bool val)
     {
         ThemedCheckBox c = new ThemedCheckBox();
-        c.Text = Texts.T(key);
-        c.IconGlyph = icon;
         c.Checked = val;
-        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(28));
-        _textKeys[c] = key;
+        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(24), Ui.Px(28));
         Add(parent, c);
         return c;
     }
 
-    ThemedSpinner Spn(double x, double y, double w, int min, int max, int step, int val, Control parent, string suffix)
+    void LinkToggle(ThemedLabel label, ThemedCheckBox chk)
+    {
+        label.Cursor = Cursors.Hand;
+        label.Click += delegate { chk.Checked = !chk.Checked; };
+    }
+
+    ThemedSpinner Spn(double x, double y, double w, int min, int max, int step, int val, Control parent, string unitKey)
     {
         ThemedSpinner s = new ThemedSpinner();
         s.Minimum = min;
         s.Maximum = max;
         s.Increment = step;
         s.Value = Math.Max(min, Math.Min(max, val));
-        s.Suffix = suffix;
+        s.Suffix = " " + Texts.T(unitKey);
         s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
+        _unitKeys[s] = unitKey;
         Add(parent, s);
         return s;
     }
@@ -365,7 +406,61 @@ public class MainForm : Form
     void Tip(Control c, string key)
     {
         _tipKeys[c] = key;
-        if (tip != null) tip.SetToolTip(c, Texts.T(key));
+        c.MouseEnter += delegate
+        {
+            _tipControl = c;
+            _tipKey = key;
+            _tipPos = Cursor.Position;
+            _tipAt = Environment.TickCount;
+            _tipShown = false;
+        };
+        c.MouseMove += delegate { if (_tipControl == c) _tipPos = Cursor.Position; };
+        c.MouseLeave += delegate
+        {
+            if (_tipControl == c)
+            {
+                _tipControl = null;
+                TipBalloon.HideTip();
+            }
+        };
+        c.MouseDown += delegate { TipBalloon.HideTip(); };
+    }
+
+    void TipTick(object sender, EventArgs e)
+    {
+        if (_tipControl == null || _tipShown) return;
+        if (Environment.TickCount - _tipAt < 420) return;
+        _tipShown = true;
+        string key;
+        if (_tipKeys.TryGetValue(_tipControl, out key))
+        {
+            TipBalloon.ShowTip(Texts.T(key), _tipPos, _theme != null ? _theme : ThemeManager.Build(false));
+        }
+    }
+
+    void FitLabels()
+    {
+        foreach (KeyValuePair<Control, string> kv in _textKeys)
+        {
+            ThemedLabel lbl = kv.Key as ThemedLabel;
+            if (lbl != null) lbl.FitContent();
+        }
+    }
+
+    void TuneTick(object sender, EventArgs e)
+    {
+        int up = _debounce.DroppedUp;
+        int down = _debounce.DroppedDown;
+        if (up == 0 && down == 0) return;
+        _debounce.ResetDrops();
+        if (!AutoTuner.Apply(_s, up, down)) return;
+        _s.Save();
+        _loading = true;
+        numUp.Value = _s.DebounceUpMs;
+        numDown.Value = _s.DebounceDownMs;
+        _loading = false;
+        Program.LogNote("autotune", "drops up=" + up + " down=" + down +
+            " -> up=" + _s.DebounceUpMs + " down=" + _s.DebounceDownMs);
     }
 
     void BuildUi()
@@ -374,13 +469,8 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(700), Ui.Px(598));
+        ClientSize = new Size(Ui.Px(700), Ui.Px(478));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-
-        tip = new ToolTip();
-        tip.AutoPopDelay = 20000;
-        tip.InitialDelay = 350;
-        tip.ReshowDelay = 80;
 
         caption = new ThemedCaption();
         caption.Title = "MacBookToolkit";
@@ -392,47 +482,58 @@ public class MainForm : Form
         caption.VersionClick += delegate { OpenRepository(); };
         Controls.Add(caption);
 
+        ThemedLabel lb;
+
         cardScreen = Card("sec_display", "", 16, 52, 328, 208);
-        chkScreen = Chk("chk_screen", "\uE706", 14, 32, 300, cardScreen, _s.ScreenEnabled);
-        lblIdle = Lbl("lbl_idle", "\uE823", 14, 66, 200, 30, cardScreen, false, false);
-        numIdle = Spn(228, 66, 86, 1, 300, 1, _s.IdleSec, cardScreen, " с");
-        lblDim = Lbl("lbl_dim", "\uE793", 14, 100, 200, 30, cardScreen, false, false);
-        numDim = Spn(228, 100, 86, 1, 100, 1, _s.DimPct, cardScreen, " %");
-        lblNormal = Lbl("lbl_normal", "\uE7F4", 14, 134, 200, 30, cardScreen, false, false);
-        numNormal = Spn(228, 134, 86, 1, 100, 1, _s.NormalPct, cardScreen, " %");
-        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 168, 200, 30, cardScreen, false, false);
-        numScreenOff = Spn(228, 168, 86, 1, 60, 1, _s.ScreenOffMin, cardScreen, " мин");
+        lb = Lbl("chk_screen", "\uE706", 14, 32, 270, 30, cardScreen);
+        chkScreen = Chk(292, 32, cardScreen, _s.ScreenEnabled); LinkToggle(lb, chkScreen);
+        Tip(lb, "tip_chk_screen"); Tip(chkScreen, "tip_chk_screen");
+        lblIdle = Lbl("lbl_idle", "\uE823", 14, 66, 206, 30, cardScreen);
+        numIdle = Spn(234, 66, 80, 1, 300, 1, _s.IdleSec, cardScreen, "unit_sec");
+        lblDim = Lbl("lbl_dim", "\uE793", 14, 100, 206, 30, cardScreen);
+        numDim = Spn(234, 100, 80, 1, 100, 1, _s.DimPct, cardScreen, "unit_pct");
+        lblNormal = Lbl("lbl_normal", "\uE7F4", 14, 134, 206, 30, cardScreen);
+        numNormal = Spn(234, 134, 80, 1, 100, 1, _s.NormalPct, cardScreen, "unit_pct");
+        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 168, 206, 30, cardScreen);
+        numScreenOff = Spn(234, 168, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, "unit_min");
 
-        cardKey = Card("sec_key", "", 356, 52, 328, 140);
-        chkKey = Chk("chk_key", "\uE765", 14, 32, 300, cardKey, _s.KeyEnabled);
-        lblUp = Lbl("lbl_up", "\uE916", 14, 66, 200, 30, cardKey, false, false);
-        numUp = Spn(228, 66, 86, 0, 200, 5, _s.DebounceUpMs, cardKey, " мс");
-        lblDown = Lbl("lbl_down", "\uE945", 14, 100, 200, 30, cardKey, false, false);
-        numDown = Spn(228, 100, 86, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, " мс");
+        cardKey = Card("sec_key", "", 16, 270, 328, 140);
+        lb = Lbl("chk_key", "\uE765", 14, 32, 270, 30, cardKey);
+        chkKey = Chk(292, 32, cardKey, _s.KeyEnabled); LinkToggle(lb, chkKey);
+        Tip(lb, "tip_chk_key"); Tip(chkKey, "tip_chk_key");
+        lblUp = Lbl("lbl_up", "\uE916", 14, 66, 206, 30, cardKey);
+        numUp = Spn(234, 66, 80, 0, 200, 5, _s.DebounceUpMs, cardKey, "unit_ms");
+        lblDown = Lbl("lbl_down", "\uE945", 14, 100, 206, 30, cardKey);
+        numDown = Spn(234, 100, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, "unit_ms");
 
-        cardTouch = Card("sec_touch", "", 16, 270, 328, 106);
-        chkTouch = Chk("chk_touch", "\uE7C9", 14, 32, 300, cardTouch, _s.TouchEnabled);
-        lblBlock = Lbl("lbl_block", "\uE8B0", 14, 66, 200, 30, cardTouch, false, false);
-        numBlock = Spn(228, 66, 86, 50, 2000, 50, _s.BlockMs, cardTouch, " мс");
+        cardTouch = Card("sec_touch", "", 356, 52, 328, 106);
+        lb = Lbl("chk_touch", "\uE7C9", 14, 32, 270, 30, cardTouch);
+        chkTouch = Chk(292, 32, cardTouch, _s.TouchEnabled); LinkToggle(lb, chkTouch);
+        Tip(lb, "tip_chk_touch"); Tip(chkTouch, "tip_chk_touch");
+        lblBlock = Lbl("lbl_block", "\uE8B0", 14, 66, 206, 30, cardTouch);
+        numBlock = Spn(234, 66, 80, 50, 2000, 50, _s.BlockMs, cardTouch, "unit_ms");
 
-        cardWindow = Card("sec_window", "", 356, 202, 328, 174);
-        lblTheme = Lbl("lbl_theme", "\uE790", 14, 32, 140, 30, cardWindow, false, false);
-        cbTheme = Sel(158, 32, 156, ThemeItems(), cardWindow);
-        lblAccent = Lbl("lbl_accent", "", 14, 66, 140, 30, cardWindow, false, false);
-        cbAccent = Sel(158, 66, 156, AccentItems(), cardWindow);
+        cardOptions = Card("sec_options", "", 356, 168, 328, 242);
+        lblTheme = Lbl("lbl_theme", "\uE790", 14, 32, 140, 30, cardOptions);
+        cbTheme = Sel(158, 32, 156, ThemeItems(), cardOptions);
+        lblAccent = Lbl("lbl_accent", "", 14, 66, 140, 30, cardOptions);
+        cbAccent = Sel(158, 66, 156, AccentItems(), cardOptions);
         cbAccent.ItemImages = AccentSwatches();
-        lblLang = Lbl("lbl_lang", "\uE774", 14, 100, 140, 30, cardWindow, false, false);
-        cbLang = Sel(158, 100, 156, new string[] { "Русский", "Українська", "English" }, cardWindow);
+        lblLang = Lbl("lbl_lang", "\uE774", 14, 100, 140, 30, cardOptions);
+        cbLang = Sel(158, 100, 156, new string[] { "Русский", "Українська", "English" }, cardOptions);
         cbLang.ItemImages = new Image[] { Flags.Draw("ru"), Flags.Draw("uk"), Flags.Draw("en") };
-        chkTopMost = Chk("chk_topmost", "\uE718", 14, 134, 300, cardWindow, _s.TopMost);
+        lb = Lbl("chk_topmost", "\uE718", 14, 134, 270, 30, cardOptions);
+        chkTopMost = Chk(292, 134, cardOptions, _s.TopMost); LinkToggle(lb, chkTopMost);
+        Tip(lb, "tip_topmost"); Tip(chkTopMost, "tip_topmost");
+        lb = Lbl("chk_autostart", "\uE7E8", 14, 168, 270, 30, cardOptions);
+        chkAutoStart = Chk(292, 168, cardOptions, _s.AutoStart); LinkToggle(lb, chkAutoStart);
+        Tip(lb, "tip_autostart"); Tip(chkAutoStart, "tip_autostart");
+        lb = Lbl("chk_tray", "\uE8A5", 14, 202, 270, 30, cardOptions);
+        chkTray = Chk(292, 202, cardOptions, _s.ShowTray); LinkToggle(lb, chkTray);
+        Tip(lb, "tip_tray"); Tip(chkTray, "tip_tray");
 
-        cardOptions = Card("sec_options", "", 16, 388, 668, 140);
-        chkAutoStart = Chk("chk_autostart", "\uE7E8", 14, 32, 640, cardOptions, _s.AutoStart);
-        chkTray = Chk("chk_tray", "\uE8A5", 14, 66, 640, cardOptions, _s.ShowTray);
-        chkCpuTemp = Chk("chk_cpu_temp", "\uE9CA", 14, 100, 640, cardOptions, _s.ShowCpuTemp);
-
-        btnSave = Btn("btn_save", "\uE74E", 16, 540, 328, 40);
-        btnReset = Btn("btn_reset", "\uE72C", 356, 540, 328, 40);
+        btnSave = Btn("btn_save", "\uE74E", 16, 422, 328, 40);
+        btnReset = Btn("btn_reset", "\uE72C", 356, 422, 328, 40);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
@@ -448,13 +549,16 @@ public class MainForm : Form
         cbAccent.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeManager.AccentKeys, _s.Accent));
         _loading = false;
 
-        Tip(chkScreen, "tip_chk_screen"); Tip(numIdle, "tip_idle"); Tip(numDim, "tip_dim"); Tip(numNormal, "tip_normal");
-        Tip(chkTouch, "tip_chk_touch"); Tip(numBlock, "tip_block");
-        Tip(chkKey, "tip_chk_key"); Tip(numUp, "tip_up"); Tip(numDown, "tip_down");
-        Tip(numScreenOff, "tip_screenoff");
-        Tip(chkTopMost, "tip_topmost"); Tip(cbTheme, "tip_theme"); Tip(cbAccent, "tip_accent");
-        Tip(chkAutoStart, "tip_autostart"); Tip(chkTray, "tip_tray"); Tip(cbLang, "tip_lang");
-        Tip(chkCpuTemp, "tip_cpu_temp");
+        Tip(lblIdle, "tip_idle"); Tip(numIdle, "tip_idle");
+        Tip(lblDim, "tip_dim"); Tip(numDim, "tip_dim");
+        Tip(lblNormal, "tip_normal"); Tip(numNormal, "tip_normal");
+        Tip(lblScreenOff, "tip_screenoff"); Tip(numScreenOff, "tip_screenoff");
+        Tip(lblUp, "tip_up"); Tip(numUp, "tip_up");
+        Tip(lblDown, "tip_down"); Tip(numDown, "tip_down");
+        Tip(lblBlock, "tip_block"); Tip(numBlock, "tip_block");
+        Tip(lblTheme, "tip_theme"); Tip(cbTheme, "tip_theme");
+        Tip(lblAccent, "tip_accent"); Tip(cbAccent, "tip_accent");
+        Tip(lblLang, "tip_lang"); Tip(cbLang, "tip_lang");
         Tip(btnSave, "tip_save"); Tip(btnReset, "tip_reset");
 
         RefreshAccentVisuals();
@@ -495,9 +599,6 @@ public class MainForm : Form
         tray.Icon = this.Icon != null ? this.Icon : SystemIcons.Application;
         tray.Text = "MacBookToolkit";
         ContextMenu cm = new ContextMenu();
-        miCpu = new MenuItem(Texts.T("tray_cpu") + ": " + Texts.T("cpu_na"));
-        miCpu.Enabled = false;
-        cm.MenuItems.Add(miCpu);
         miShow = new MenuItem(Texts.T("tray_show"));
         miShow.Click += delegate { ShowFromTray(); };
         miTopMost = new MenuItem(Texts.T("tray_topmost"));
@@ -542,94 +643,6 @@ public class MainForm : Form
         BringToFront();
     }
 
-    void UpdateCpuMenuItem()
-    {
-        if (miCpu == null) return;
-        string value = _cpuTempOk ? (Math.Round(_cpuTempC) + " °C") : Texts.T("cpu_na");
-        miCpu.Text = Texts.T("tray_cpu") + ": " + value;
-    }
-
-    void RequestCpuTemp()
-    {
-        if (_s == null) return;
-        if (!_s.ShowCpuTemp)
-        {
-            _cpuTempOk = false;
-            ApplyCpuTempVisuals();
-            return;
-        }
-        if (_tempInFlight) return;
-        _tempInFlight = true;
-        ThreadPool.QueueUserWorkItem(delegate
-        {
-            double c;
-            bool ok = CpuTemp.TryReadAverage(out c);
-            try
-            {
-                BeginInvoke(new Action(delegate
-                {
-                    _tempInFlight = false;
-                    _cpuTempOk = ok;
-                    _cpuTempC = c;
-                    ApplyCpuTempVisuals();
-                }));
-            }
-            catch { _tempInFlight = false; }
-        });
-    }
-
-    void ApplyCpuTempVisuals()
-    {
-        UpdateCpuMenuItem();
-        if (tray == null) return;
-        if (!_s.ShowCpuTemp)
-        {
-            tray.Text = "MacBookToolkit";
-            tray.Icon = Icon != null ? Icon : SystemIcons.Application;
-            if (_tempTrayIcon != null) { _tempTrayIcon.Dispose(); _tempTrayIcon = null; }
-            return;
-        }
-        string value = _cpuTempOk ? (Math.Round(_cpuTempC) + " °C") : Texts.T("cpu_na");
-        tray.Text = "MacBookToolkit — " + Texts.T("tray_cpu") + " " + value;
-        Icon next = BuildTempIcon(_cpuTempOk ? (double?)Math.Round(_cpuTempC) : null);
-        if (next != null)
-        {
-            Icon old = _tempTrayIcon;
-            _tempTrayIcon = next;
-            tray.Icon = next;
-            if (old != null) old.Dispose();
-        }
-    }
-
-    Icon BuildTempIcon(double? celsius)
-    {
-        try
-        {
-            int size = 16;
-            Bitmap bmp = new Bitmap(size, size);
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                Icon src = Icon != null ? Icon : SystemIcons.Application;
-                g.DrawIcon(src, new Rectangle(0, 0, size, size));
-                Color col;
-                if (celsius == null) col = Color.Gray;
-                else if (celsius.Value < 60) col = Color.FromArgb(46, 160, 67);
-                else if (celsius.Value < 78) col = Color.FromArgb(255, 165, 0);
-                else col = Color.FromArgb(220, 40, 40);
-                using (SolidBrush b = new SolidBrush(col)) g.FillRectangle(b, 0, size - 3, size, 3);
-            }
-            IntPtr h = bmp.GetHicon();
-            using (Icon temp = Icon.FromHandle(h))
-            {
-                Icon clone = (Icon)temp.Clone();
-                DestroyIcon(h);
-                bmp.Dispose();
-                return clone;
-            }
-        }
-        catch { return null; }
-    }
-
     void OpenRepository()
     {
         try
@@ -671,16 +684,17 @@ public class MainForm : Form
             cbAccent.ItemImages = AccentSwatches();
         }
         RefreshAccentVisuals();
-        UpdateCpuMenuItem();
+        foreach (KeyValuePair<ThemedSpinner, string> kv in _unitKeys)
+        {
+            kv.Key.Suffix = " " + Texts.T(kv.Value);
+            kv.Key.Invalidate();
+        }
         if (miShow != null) miShow.Text = Texts.T("tray_show");
         if (miTopMost != null) miTopMost.Text = Texts.T("tray_topmost");
         if (miAutoStart != null) miAutoStart.Text = Texts.T("tray_autostart");
         if (miExit != null) miExit.Text = Texts.T("tray_exit");
-        if (tip != null)
-        {
-            foreach (KeyValuePair<Control, string> kv in _tipKeys) tip.SetToolTip(kv.Key, Texts.T(kv.Value));
-        }
         _loading = false;
+        FitLabels();
         Invalidate(true);
     }
 
@@ -778,9 +792,10 @@ public class MainForm : Form
     {
         if (_loading) return;
         _s.Lang = cbLang.SelectedIndex == 2 ? "en" : (cbLang.SelectedIndex == 1 ? "uk" : "ru");
-        _s.Save();
+        bool top = chkTopMost.Checked;
         ApplyLanguage();
         ApplyThemeNow();
+        ApplyTopMost(top, true);
     }
 
     void SaveClick(object sender, EventArgs e)
@@ -799,7 +814,6 @@ public class MainForm : Form
         _s.ShowTray = chkTray.Checked;
         _s.TopMost = chkTopMost.Checked;
         _s.Accent = ThemeManager.AccentKeys[Math.Max(0, cbAccent.SelectedIndex)];
-        _s.ShowCpuTemp = chkCpuTemp.Checked;
         if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
         _s.Save();
         SetAutoStart(_s.AutoStart);
@@ -807,7 +821,6 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        RequestCpuTemp();
         _brightnessOk = SetBrightness(_s.NormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
@@ -836,7 +849,6 @@ public class MainForm : Form
         numScreenOff.Value = d.ScreenOffMin;
         chkAutoStart.Checked = d.AutoStart;
         chkTray.Checked = d.ShowTray;
-        chkCpuTemp.Checked = d.ShowCpuTemp;
         _loading = false;
         _s.Save();
         SetAutoStart(_s.AutoStart);
@@ -844,7 +856,6 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        RequestCpuTemp();
         _brightnessOk = SetBrightness(d.NormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
@@ -876,6 +887,7 @@ public class MainForm : Form
         base.OnShown(e);
         if (_systemApplied || _s == null) return;
         _systemApplied = true;
+        FitLabels();
         Calibrate();
         ApplyTitleBarTheme();
         Resize += FormResize;
@@ -891,11 +903,9 @@ public class MainForm : Form
         tray.Visible = _s.ShowTray;
         ApplyTopMost(_s.TopMost, false);
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
-        RequestCpuTemp();
         Program.LogNote("calibrate", "brightness=" + _s.NormalPct + "%; video idle=" +
             _s.ScreenOffMin + " min; autostart=" + _s.AutoStart + "; topmost=" + _s.TopMost +
-            "; theme=" + _s.Theme + "; accent=" + _s.Accent + "; cpuTemp=" + _s.ShowCpuTemp +
-            "; lang=" + _s.Lang);
+            "; theme=" + _s.Theme + "; accent=" + _s.Accent + "; lang=" + _s.Lang);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -917,11 +927,11 @@ public class MainForm : Form
         {
             if (idleTimer != null) { idleTimer.Stop(); idleTimer.Dispose(); idleTimer = null; }
             if (themeWatch != null) { themeWatch.Stop(); themeWatch.Dispose(); themeWatch = null; }
-            if (tempTimer != null) { tempTimer.Stop(); tempTimer.Dispose(); tempTimer = null; }
-            if (_tempTrayIcon != null) { _tempTrayIcon.Dispose(); _tempTrayIcon = null; }
+            if (tipTimer != null) { tipTimer.Stop(); tipTimer.Dispose(); tipTimer = null; }
+            if (tuneTimer != null) { tuneTimer.Stop(); tuneTimer.Dispose(); tuneTimer = null; }
+            TipBalloon.HideTip();
             RemoveHooks();
             if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
-            if (tip != null) { tip.Dispose(); tip = null; }
             if (Font != null) Font.Dispose();
             if (Icon != null) Icon.Dispose();
         }
