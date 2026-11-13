@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -54,6 +54,38 @@ public static class Ui
     public static Color Lighten(Color c, double k) { return k >= 0 ? Mix(c, Color.White, k) : Mix(c, Color.Black, -k); }
 }
 
+// ---------- Segoe MDL2 icon helper ----------
+public static class Icons
+{
+    public static Font Font(double px)
+    {
+        return new Font("Segoe MDL2 Assets", (float)px, FontStyle.Regular, GraphicsUnit.Pixel);
+    }
+
+    public static void Draw(Graphics g, string glyph, Rectangle r, Color color, double px)
+    {
+        if (string.IsNullOrEmpty(glyph)) return;
+        using (Font fnt = Font(px))
+        using (StringFormat sf = new StringFormat())
+        using (SolidBrush b = new SolidBrush(color))
+        {
+            sf.Alignment = StringAlignment.Center;
+            sf.LineAlignment = StringAlignment.Center;
+            sf.FormatFlags = StringFormatFlags.NoWrap;
+            g.DrawString(glyph, fnt, b, r, sf);
+        }
+    }
+
+    public static void DrawImage(Graphics g, Image img, Rectangle r)
+    {
+        if (img == null) return;
+        double ar = (double)img.Width / Math.Max(1, img.Height);
+        int h = r.Height, w = (int)Math.Round(h * ar);
+        if (w > r.Width) { w = r.Width; h = (int)Math.Round(w / ar); }
+        g.DrawImage(img, new Rectangle(r.X + (r.Width - w) / 2, r.Y + (r.Height - h) / 2, w, h));
+    }
+}
+
 // ---------- Theme ----------
 public class ThemeColors
 {
@@ -102,18 +134,43 @@ public static class ThemeManager
         return false;
     }
 
-    public static ThemeColors Resolve(string mode)
+    public static ThemeColors Resolve(string mode, string accentKey)
     {
         bool dark;
         if (mode == "dark") dark = true;
         else if (mode == "light") dark = false;
         else dark = SystemIsDark();
-        return Build(dark);
+        Color accent = AccentColorFor(accentKey);
+        return Build(dark, accent);
     }
+
+    public static Color AccentColorFor(string key)
+    {
+        if (string.IsNullOrEmpty(key) || key == "system") return AccentColor();
+        switch (key)
+        {
+            case "blue": return Color.FromArgb(0, 95, 184);
+            case "purple": return Color.FromArgb(135, 100, 184);
+            case "pink": return Color.FromArgb(194, 57, 179);
+            case "red": return Color.FromArgb(196, 43, 28);
+            case "orange": return Color.FromArgb(202, 80, 16);
+            case "yellow": return Color.FromArgb(255, 185, 0);
+            case "green": return Color.FromArgb(16, 124, 16);
+            case "teal": return Color.FromArgb(3, 131, 135);
+            case "gray": return Color.FromArgb(105, 121, 126);
+            default: return AccentColor();
+        }
+    }
+
+    public static readonly string[] AccentKeys = new string[] { "system", "blue", "purple", "pink", "red", "orange", "yellow", "green", "teal", "gray" };
 
     public static ThemeColors Build(bool dark)
     {
-        Color accent = AccentColor();
+        return Build(dark, AccentColor());
+    }
+
+    public static ThemeColors Build(bool dark, Color accent)
+    {
         ThemeColors t = new ThemeColors();
         t.Dark = dark;
         if (dark)
@@ -179,6 +236,28 @@ public static class ThemeManager
     }
 }
 
+public static class Swatches
+{
+    public static Bitmap Accent(string key)
+    {
+        Color c = ThemeManager.AccentColorFor(key);
+        int side = Ui.Px(14);
+        Bitmap bmp = new Bitmap(side, side);
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            Rectangle r = new Rectangle(0, 0, side - 1, side - 1);
+            using (GraphicsPath p = Ui.Round(r, Ui.Px(3)))
+            {
+                using (SolidBrush b = new SolidBrush(c)) g.FillPath(b, p);
+                using (Pen pen = new Pen(Color.FromArgb(110, 0, 0, 0))) g.DrawPath(pen, p);
+            }
+        }
+        return bmp;
+    }
+}
+
 public interface IThemed
 {
     void ApplyTheme(ThemeColors t, Color surface);
@@ -189,6 +268,7 @@ public class ThemedCard : Panel, IThemed
 {
     public string TitleKey = "";
     public string Title = "";
+    public string TitleIcon = "";
     ThemeColors _t;
     Color _surface;
 
@@ -219,10 +299,13 @@ public class ThemedCard : Panel, IThemed
         }
         if (!string.IsNullOrEmpty(Title))
         {
-            using (Font f = new Font("Segoe UI", 9f, FontStyle.Bold))
+            int band = Ui.Px(32);
+            Rectangle iconRect = new Rectangle(Ui.Px(9), 0, Ui.Px(24), band);
+            Icons.Draw(g, TitleIcon, iconRect, t.Accent, Ui.Px(22));
+            using (Font f = new Font("Segoe UI", 10f, FontStyle.Bold))
             {
                 TextRenderer.DrawText(g, Title, f,
-                    new Rectangle(Ui.Px(12), Ui.Px(7), Width - Ui.Px(24), Ui.Px(18)),
+                    new Rectangle(Ui.Px(39), 0, Width - Ui.Px(49), band),
                     t.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             }
         }
@@ -230,24 +313,51 @@ public class ThemedCard : Panel, IThemed
 }
 
 // ---------- Label ----------
-public class ThemedLabel : Label, IThemed
+public class ThemedLabel : Control, IThemed
 {
+    public string IconGlyph = "";
+    public Image IconImage;
     public bool Muted = false;
     public bool Bold = false;
 
+    ThemeColors _t;
+    Color _surface;
+
     public ThemedLabel()
     {
-        AutoSize = false;
-        AutoEllipsis = true;
-        UseCompatibleTextRendering = false;
-        UseMnemonic = false;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                 ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
     }
 
     public void ApplyTheme(ThemeColors t, Color surface)
     {
+        _t = t; _surface = surface;
         BackColor = surface;
-        ForeColor = Muted ? t.Sub : t.Fore;
         Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        ThemeColors t = _t != null ? _t : ThemeManager.Build(false);
+        using (SolidBrush b = new SolidBrush(_surface)) g.FillRectangle(b, ClientRectangle);
+        Color fg = Muted ? t.Sub : t.Fore;
+        int iconSize = Ui.Px(16);
+        int left = 0;
+        if (!string.IsNullOrEmpty(IconGlyph) || IconImage != null)
+        {
+            Rectangle ir = new Rectangle(0, (Height - iconSize) / 2, iconSize, iconSize);
+            if (IconImage != null) Icons.DrawImage(g, IconImage, ir);
+            else Icons.Draw(g, IconGlyph, ir, Muted ? t.Sub : t.Accent, Ui.Px(14));
+            left = iconSize + Ui.Px(8);
+        }
+        Font font = Font;
+        Font boldFont = null;
+        if (Bold) { boldFont = new Font(Font, FontStyle.Bold); font = boldFont; }
+        Rectangle rt = new Rectangle(left, 0, Math.Max(0, Width - left), Height);
+        TextRenderer.DrawText(g, Text, font, rt, fg,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        if (boldFont != null) boldFont.Dispose();
     }
 }
 
@@ -256,6 +366,7 @@ public class ThemedCheckBox : Control, IThemed
 {
     ThemeColors _t;
     Color _surface = Color.Transparent;
+    public string IconGlyph = "";
     bool _hover;
     bool _checked;
     bool _focus;
@@ -324,7 +435,13 @@ public class ThemedCheckBox : Control, IThemed
 
         int box = Ui.Px(14);
         int y = (Height - box) / 2;
-        Rectangle rb = new Rectangle(Ui.Px(1), y, box, box);
+        int iconW = 0;
+        if (!string.IsNullOrEmpty(IconGlyph))
+        {
+            Icons.Draw(g, IconGlyph, new Rectangle(0, (Height - Ui.Px(16)) / 2, Ui.Px(16), Ui.Px(16)), t.Accent, Ui.Px(14));
+            iconW = Ui.Px(16) + Ui.Px(6);
+        }
+        Rectangle rb = new Rectangle(iconW + Ui.Px(1), y, box, box);
         bool on = Checked;
         using (GraphicsPath p = Ui.Round(rb, Ui.Px(3)))
         {
@@ -353,7 +470,7 @@ public class ThemedCheckBox : Control, IThemed
                 g.DrawLines(pen, pts);
             }
         }
-        int tx = box + Ui.Px(8);
+        int tx = rb.Right + Ui.Px(8);
         Rectangle rt = new Rectangle(tx, 0, Math.Max(0, Width - tx), Height);
         TextRenderer.DrawText(g, Text, Font, rt, Enabled ? t.Fore : t.Sub,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
@@ -392,6 +509,7 @@ public class ThemedSpinner : Control, IThemed
     public int Minimum { get { return _min; } set { _min = value; Value = _value; } }
     public int Maximum { get { return _max; } set { _max = value; Value = _value; } }
     public int Increment { get { return _inc; } set { _inc = Math.Max(1, value); } }
+    public string Suffix = "";
 
     public int Value
     {
@@ -431,8 +549,17 @@ public class ThemedSpinner : Control, IThemed
             using (Pen pen = new Pen(_focus ? t.Accent : t.Border)) g.DrawPath(pen, p);
         }
         Rectangle txt = new Rectangle(Ui.Px(7), 0, Width - ButtonW - Ui.Px(9), Height);
-        TextRenderer.DrawText(g, _value.ToString(), Font, txt, Enabled ? t.Fore : t.Sub,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        string num = _value.ToString();
+        TextRenderer.DrawText(g, num, Font, txt, Enabled ? t.Fore : t.Sub,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        if (!string.IsNullOrEmpty(Suffix))
+        {
+            Size ns = TextRenderer.MeasureText(num, Font);
+            int sx = txt.X + ns.Width;
+            Rectangle sr = new Rectangle(sx, 0, Math.Max(0, txt.Right - sx), Height);
+            TextRenderer.DrawText(g, Suffix, Font, sr, Enabled ? t.Sub : t.Sub,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        }
 
         Rectangle up = new Rectangle(Width - ButtonW, 0, ButtonW - 1, Height / 2);
         Rectangle dn = new Rectangle(Width - ButtonW, Height / 2, ButtonW - 1, Height - Height / 2);
@@ -616,9 +743,8 @@ public class ThemedSelect : Control, IThemed
         int left = Ui.Px(7);
         if (img != null)
         {
-            int ih = Ui.Px(11), iw = Ui.Px(17);
-            g.DrawImage(img, new Rectangle(left, (Height - ih) / 2, iw, ih));
-            left += iw + Ui.Px(7);
+            Icons.DrawImage(g, img, new Rectangle(left, (Height - Ui.Px(14)) / 2, Ui.Px(22), Ui.Px(14)));
+            left += Ui.Px(22) + Ui.Px(6);
         }
         Rectangle txt = new Rectangle(left, 0, Width - left - Ui.Px(20), Height);
         string text = (_items.Length > 0 && _index >= 0 && _index < _items.Length) ? _items[_index] : "";
@@ -746,9 +872,8 @@ public class SelectPopup : Form
             int textX = r.X + Ui.Px(8);
             if (_images != null && i < _images.Length && _images[i] != null)
             {
-                int ih = Ui.Px(11), iw = Ui.Px(17);
-                g.DrawImage(_images[i], new Rectangle(textX, r.Y + (r.Height - ih) / 2, iw, ih));
-                textX += iw + Ui.Px(8);
+                Icons.DrawImage(g, _images[i], new Rectangle(textX, r.Y + (r.Height - Ui.Px(14)) / 2, Ui.Px(22), Ui.Px(14)));
+                textX += Ui.Px(22) + Ui.Px(6);
             }
             TextRenderer.DrawText(g, _items[i], _font, new Rectangle(textX, r.Y, r.Right - textX - Ui.Px(2), r.Height),
                 _t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
@@ -925,6 +1050,7 @@ public class ThemedButton : Button, IThemed
     Color _surface = Color.Transparent;
     bool _hover, _pressed;
     public bool Secondary = false;
+    public string IconGlyph = "";
 
     public ThemedButton()
     {
@@ -976,8 +1102,18 @@ public class ThemedButton : Button, IThemed
                 using (Pen pen = new Pen(border)) g.DrawPath(pen, p);
             }
         }
-        TextRenderer.DrawText(g, Text, Font, ClientRectangle, fore,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        Size ts = TextRenderer.MeasureText(Text, Font);
+        int iconW = string.IsNullOrEmpty(IconGlyph) ? 0 : Ui.Px(16) + Ui.Px(7);
+        int totalW = iconW + ts.Width;
+        int startX = (Width - totalW) / 2;
+        if (totalW > Width - Ui.Px(16)) startX = Ui.Px(8);
+        if (iconW > 0)
+        {
+            Icons.Draw(g, IconGlyph, new Rectangle(startX, (Height - Ui.Px(16)) / 2, Ui.Px(16), Ui.Px(16)), fore, Ui.Px(14));
+        }
+        Rectangle tr = new Rectangle(startX + iconW, 0, Math.Max(0, Width - startX - iconW - Ui.Px(6)), Height);
+        TextRenderer.DrawText(g, Text, Font, tr, fore,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 }
 

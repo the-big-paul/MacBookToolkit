@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -25,8 +25,10 @@ public class Settings
     public bool AutoStart = true;
     public bool ShowTray = true;
     public bool TopMost = false;
+    public bool ShowCpuTemp = false;
     public string Lang = "ru";
     public string Theme = "system";
+    public string Accent = "system";
 
     public const int MaxDebounceDownMs = 30;
 
@@ -88,8 +90,10 @@ public class Settings
                 case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
                 case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
                 case "TopMost": if (bool.TryParse(v, out b)) s.TopMost = b; break;
+                case "ShowCpuTemp": if (bool.TryParse(v, out b)) s.ShowCpuTemp = b; break;
                 case "Lang": s.Lang = v; break;
                 case "Theme": s.Theme = v; break;
+                case "Accent": s.Accent = v; break;
             }
         }
         s.Normalize();
@@ -113,6 +117,9 @@ public class Settings
         if (DimPct > NormalPct) DimPct = NormalPct;
         if (Lang != "ru" && Lang != "uk" && Lang != "en") Lang = "ru";
         if (Theme != "system" && Theme != "light" && Theme != "dark") Theme = "system";
+        bool knownAccent = false;
+        for (int i = 0; i < ThemeManager.AccentKeys.Length; i++) if (ThemeManager.AccentKeys[i] == Accent) { knownAccent = true; break; }
+        if (!knownAccent) Accent = "system";
     }
 
     public void Save()
@@ -134,8 +141,10 @@ public class Settings
             sb.AppendLine("AutoStart=" + AutoStart.ToString());
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
             sb.AppendLine("TopMost=" + TopMost.ToString());
+            sb.AppendLine("ShowCpuTemp=" + ShowCpuTemp.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
             sb.AppendLine("Theme=" + Theme.ToString());
+            sb.AppendLine("Accent=" + Accent.ToString());
             string fp = FilePath();
             string tmp = fp + ".tmp";
             File.WriteAllText(tmp, sb.ToString());
@@ -187,6 +196,8 @@ public class MainForm : Form
     static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
     [DllImport("dwmapi.dll")]
     static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool DestroyIcon(IntPtr hIcon);
     [DllImport("user32.dll")]
     static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
@@ -228,18 +239,23 @@ public class MainForm : Form
     Dictionary<Control, string> _tipKeys = new Dictionary<Control, string>();
     ToolTip tip;
 
-    ThemedCard cardScreen, cardKey, cardTouch, cardPower, cardWindow, cardOptions;
+    ThemedCard cardScreen, cardKey, cardTouch, cardWindow, cardOptions;
     ThemedCaption caption;
     ThemedLabel lblIdle, lblDim, lblNormal;
-    ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblLang;
-    ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray;
+    ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblAccent, lblLang;
+    ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray, chkCpuTemp;
     ThemedSpinner numIdle, numDim, numNormal, numBlock, numUp, numDown, numScreenOff;
-    ThemedSelect cbLang, cbTheme;
+    ThemedSelect cbLang, cbTheme, cbAccent;
     ThemedButton btnSave, btnReset;
     NotifyIcon tray;
-    MenuItem miShow, miTopMost, miAutoStart, miExit;
+    MenuItem miShow, miTopMost, miAutoStart, miCpu, miExit;
     System.Windows.Forms.Timer idleTimer;
     System.Windows.Forms.Timer themeWatch;
+    System.Windows.Forms.Timer tempTimer;
+    bool _tempInFlight = false;
+    bool _cpuTempOk = false;
+    double _cpuTempC = 0;
+    Icon _tempTrayIcon;
     bool _loading = false;
     bool _brightnessOk = false;
     int _brightnessTries = 0;
@@ -263,6 +279,11 @@ public class MainForm : Form
         themeWatch.Interval = 1500;
         themeWatch.Tick += delegate { WatchSystemTheme(); };
         themeWatch.Start();
+        tempTimer = new System.Windows.Forms.Timer();
+        tempTimer.Interval = 5000;
+        tempTimer.Tick += delegate { RequestCpuTemp(); };
+        tempTimer.Start();
+        RequestCpuTemp();
     }
 
     // ---------- UI building ----------
@@ -271,48 +292,51 @@ public class MainForm : Form
         parent.Controls.Add(child);
     }
 
-    ThemedCard Card(string key, double x, double y, double w, double h)
+    ThemedCard Card(string key, string icon, double x, double y, double w, double h)
     {
         ThemedCard c = new ThemedCard();
         c.TitleKey = key;
         c.Title = Texts.T(key);
+        c.TitleIcon = icon;
         c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
         _textKeys[c] = key;
         Controls.Add(c);
         return c;
     }
 
-    ThemedLabel Lbl(string key, double x, double y, double w, double h, Control parent, bool muted, bool bold)
+    ThemedLabel Lbl(string key, string icon, double x, double y, double w, double h, Control parent, bool muted, bool bold)
     {
         ThemedLabel l = new ThemedLabel();
         l.Muted = muted;
         l.Bold = bold;
+        l.IconGlyph = icon;
         l.Text = Texts.T(key);
         l.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
-        l.TextAlign = ContentAlignment.MiddleLeft;
         _textKeys[l] = key;
         Add(parent, l);
         return l;
     }
 
-    ThemedCheckBox Chk(string key, double x, double y, double w, Control parent, bool val)
+    ThemedCheckBox Chk(string key, string icon, double x, double y, double w, Control parent, bool val)
     {
         ThemedCheckBox c = new ThemedCheckBox();
         c.Text = Texts.T(key);
+        c.IconGlyph = icon;
         c.Checked = val;
-        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(22));
+        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(28));
         _textKeys[c] = key;
         Add(parent, c);
         return c;
     }
 
-    ThemedSpinner Spn(double x, double y, double w, int min, int max, int step, int val, Control parent)
+    ThemedSpinner Spn(double x, double y, double w, int min, int max, int step, int val, Control parent, string suffix)
     {
         ThemedSpinner s = new ThemedSpinner();
         s.Minimum = min;
         s.Maximum = max;
         s.Increment = step;
         s.Value = Math.Max(min, Math.Min(max, val));
+        s.Suffix = suffix;
         s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
         Add(parent, s);
         return s;
@@ -327,10 +351,11 @@ public class MainForm : Form
         return s;
     }
 
-    ThemedButton Btn(string key, double x, double y, double w, double h)
+    ThemedButton Btn(string key, string icon, double x, double y, double w, double h)
     {
         ThemedButton b = new ThemedButton();
         b.Text = Texts.T(key);
+        b.IconGlyph = icon;
         b.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
         _textKeys[b] = key;
         Controls.Add(b);
@@ -349,7 +374,7 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(680), Ui.Px(598));
+        ClientSize = new Size(Ui.Px(656), Ui.Px(582));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         tip = new ToolTip();
@@ -361,72 +386,78 @@ public class MainForm : Form
         caption.Title = "MacBookToolkit";
         caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
         caption.VersionTip = Texts.T("version_tip");
-        caption.SetBounds(0, 0, Ui.Px(680), Ui.Px(40));
+        caption.SetBounds(0, 0, Ui.Px(656), Ui.Px(40));
         caption.CloseClick += delegate { Close(); };
         caption.MinimizeClick += delegate { WindowState = FormWindowState.Minimized; };
         caption.VersionClick += delegate { OpenRepository(); };
         Controls.Add(caption);
 
-        cardScreen = Card("sec_screen", 16, 56, 316, 166);
-        chkScreen = Chk("chk_screen", 14, 30, 288, cardScreen, _s.ScreenEnabled);
-        lblIdle = Lbl("lbl_idle", 14, 64, 200, 26, cardScreen, false, false);
-        numIdle = Spn(220, 64, 80, 1, 300, 1, _s.IdleSec, cardScreen);
-        lblDim = Lbl("lbl_dim", 14, 98, 200, 26, cardScreen, false, false);
-        numDim = Spn(220, 98, 80, 1, 100, 1, _s.DimPct, cardScreen);
-        lblNormal = Lbl("lbl_normal", 14, 132, 200, 26, cardScreen, false, false);
-        numNormal = Spn(220, 132, 80, 1, 100, 1, _s.NormalPct, cardScreen);
+        cardScreen = Card("sec_display", "\uE7F4", 16, 56, 304, 206);
+        chkScreen = Chk("chk_screen", "\uE706", 14, 34, 288, cardScreen, _s.ScreenEnabled);
+        lblIdle = Lbl("lbl_idle", "\uE823", 14, 68, 200, 26, cardScreen, false, false);
+        numIdle = Spn(216, 68, 80, 1, 300, 1, _s.IdleSec, cardScreen, " с");
+        lblDim = Lbl("lbl_dim", "\uE7F4", 14, 102, 200, 26, cardScreen, false, false);
+        numDim = Spn(216, 102, 80, 1, 100, 1, _s.DimPct, cardScreen, " %");
+        lblNormal = Lbl("lbl_normal", "\uE793", 14, 136, 200, 26, cardScreen, false, false);
+        numNormal = Spn(216, 136, 80, 1, 100, 1, _s.NormalPct, cardScreen, " %");
+        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 170, 200, 26, cardScreen, false, false);
+        numScreenOff = Spn(216, 170, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, " мин");
 
-        cardKey = Card("sec_key", 348, 56, 316, 166);
-        chkKey = Chk("chk_key", 14, 30, 288, cardKey, _s.KeyEnabled);
-        lblUp = Lbl("lbl_up", 14, 64, 200, 26, cardKey, false, false);
-        numUp = Spn(220, 64, 80, 0, 200, 5, _s.DebounceUpMs, cardKey);
-        lblDown = Lbl("lbl_down", 14, 98, 200, 26, cardKey, false, false);
-        numDown = Spn(220, 98, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey);
+        cardKey = Card("sec_key", "\uE765", 336, 56, 304, 138);
+        chkKey = Chk("chk_key", "\uE765", 14, 34, 288, cardKey, _s.KeyEnabled);
+        lblUp = Lbl("lbl_up", "\uE916", 14, 68, 200, 26, cardKey, false, false);
+        numUp = Spn(216, 68, 80, 0, 200, 5, _s.DebounceUpMs, cardKey, " мс");
+        lblDown = Lbl("lbl_down", "\uE8B9", 14, 102, 200, 26, cardKey, false, false);
+        numDown = Spn(216, 102, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, " мс");
 
-        cardTouch = Card("sec_touch", 16, 234, 316, 98);
-        chkTouch = Chk("chk_touch", 14, 30, 288, cardTouch, _s.TouchEnabled);
-        lblBlock = Lbl("lbl_block", 14, 64, 200, 26, cardTouch, false, false);
-        numBlock = Spn(220, 64, 80, 50, 2000, 50, _s.BlockMs, cardTouch);
+        cardTouch = Card("sec_touch", "\uE7C9", 16, 274, 304, 104);
+        chkTouch = Chk("chk_touch", "\uE7C9", 14, 34, 288, cardTouch, _s.TouchEnabled);
+        lblBlock = Lbl("lbl_block", "\uE916", 14, 68, 200, 26, cardTouch, false, false);
+        numBlock = Spn(216, 68, 80, 50, 2000, 50, _s.BlockMs, cardTouch, " мс");
 
-        cardPower = Card("sec_power", 348, 234, 316, 98);
-        lblScreenOff = Lbl("lbl_screenoff", 14, 64, 200, 26, cardPower, false, false);
-        numScreenOff = Spn(220, 64, 80, 1, 60, 1, _s.ScreenOffMin, cardPower);
+        cardWindow = Card("sec_window", "\uE790", 336, 206, 304, 186);
+        lblTheme = Lbl("lbl_theme", "\uE790", 14, 34, 276, 24, cardWindow, false, false);
+        cbTheme = Sel(14, 60, 276, ThemeItems(), cardWindow);
+        lblAccent = Lbl("lbl_accent", "", 14, 92, 276, 24, cardWindow, false, false);
+        cbAccent = Sel(14, 118, 276, AccentItems(), cardWindow);
+        cbAccent.ItemImages = AccentSwatches();
+        chkTopMost = Chk("chk_topmost", "\uE718", 14, 150, 276, cardWindow, _s.TopMost);
 
-        cardWindow = Card("sec_window", 16, 344, 648, 74);
-        lblTheme = Lbl("lbl_theme", 14, 30, 150, 26, cardWindow, false, false);
-        cbTheme = Sel(168, 30, 200, ThemeItems(), cardWindow);
-        chkTopMost = Chk("chk_topmost", 390, 30, 240, cardWindow, _s.TopMost);
-
-        cardOptions = Card("sec_options", 16, 430, 648, 98);
-        chkAutoStart = Chk("chk_autostart", 14, 30, 300, cardOptions, _s.AutoStart);
-        chkTray = Chk("chk_tray", 14, 64, 300, cardOptions, _s.ShowTray);
-        lblLang = Lbl("lbl_lang", 330, 30, 146, 26, cardOptions, false, false);
-        cbLang = Sel(480, 30, 150, new string[] { "Русский", "Українська", "English" }, cardOptions);
+        cardOptions = Card("sec_options", "\uE9E9", 16, 404, 624, 108);
+        chkAutoStart = Chk("chk_autostart", "\uE7E8", 14, 34, 300, cardOptions, _s.AutoStart);
+        chkTray = Chk("chk_tray", "\uE8A5", 14, 68, 300, cardOptions, _s.ShowTray);
+        lblLang = Lbl("lbl_lang", "\uE774", 330, 34, 146, 26, cardOptions, false, false);
+        cbLang = Sel(480, 34, 130, new string[] { "Русский", "Українська", "English" }, cardOptions);
         cbLang.ItemImages = new Image[] { Flags.Draw("ru"), Flags.Draw("uk"), Flags.Draw("en") };
+        chkCpuTemp = Chk("chk_cpu_temp", "\uE9CA", 330, 68, 280, cardOptions, _s.ShowCpuTemp);
 
-        btnSave = Btn("btn_save", 16, 540, 316, 42);
-        btnReset = Btn("btn_reset", 348, 540, 316, 42);
+        btnSave = Btn("btn_save", "\uE74E", 16, 524, 304, 42);
+        btnReset = Btn("btn_reset", "\uE72C", 336, 524, 304, 42);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
         cbLang.SelectedIndexChanged += LangChanged;
         cbTheme.SelectedIndexChanged += ThemeChanged;
+        cbAccent.SelectedIndexChanged += AccentChanged;
         btnSave.Click += SaveClick;
         btnReset.Click += ResetClick;
 
         _loading = true;
         cbLang.SelectedIndex = _s.Lang == "en" ? 2 : (_s.Lang == "uk" ? 1 : 0);
         cbTheme.SelectedIndex = _s.Theme == "light" ? 1 : (_s.Theme == "dark" ? 2 : 0);
+        cbAccent.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeManager.AccentKeys, _s.Accent));
         _loading = false;
 
         Tip(chkScreen, "tip_chk_screen"); Tip(numIdle, "tip_idle"); Tip(numDim, "tip_dim"); Tip(numNormal, "tip_normal");
         Tip(chkTouch, "tip_chk_touch"); Tip(numBlock, "tip_block");
         Tip(chkKey, "tip_chk_key"); Tip(numUp, "tip_up"); Tip(numDown, "tip_down");
         Tip(numScreenOff, "tip_screenoff");
-        Tip(chkTopMost, "tip_topmost"); Tip(cbTheme, "tip_theme");
+        Tip(chkTopMost, "tip_topmost"); Tip(cbTheme, "tip_theme"); Tip(cbAccent, "tip_accent");
         Tip(chkAutoStart, "tip_autostart"); Tip(chkTray, "tip_tray"); Tip(cbLang, "tip_lang");
+        Tip(chkCpuTemp, "tip_cpu_temp");
         Tip(btnSave, "tip_save"); Tip(btnReset, "tip_reset");
 
+        RefreshAccentVisuals();
         BuildTray();
     }
 
@@ -435,12 +466,38 @@ public class MainForm : Form
         return new string[] { Texts.T("theme_system"), Texts.T("theme_light"), Texts.T("theme_dark") };
     }
 
+    string[] AccentItems()
+    {
+        return new string[]
+        {
+            Texts.T("accent_system"), Texts.T("accent_blue"), Texts.T("accent_purple"), Texts.T("accent_pink"),
+            Texts.T("accent_red"), Texts.T("accent_orange"), Texts.T("accent_yellow"), Texts.T("accent_green"),
+            Texts.T("accent_teal"), Texts.T("accent_gray")
+        };
+    }
+
+    Image[] AccentSwatches()
+    {
+        Image[] imgs = new Image[ThemeManager.AccentKeys.Length];
+        for (int i = 0; i < ThemeManager.AccentKeys.Length; i++) imgs[i] = Swatches.Accent(ThemeManager.AccentKeys[i]);
+        return imgs;
+    }
+
+    void RefreshAccentVisuals()
+    {
+        if (lblAccent != null) lblAccent.IconImage = Swatches.Accent(_s.Accent);
+        if (cbAccent != null) cbAccent.ItemImages = AccentSwatches();
+    }
+
     void BuildTray()
     {
         tray = new NotifyIcon();
         tray.Icon = this.Icon != null ? this.Icon : SystemIcons.Application;
         tray.Text = "MacBookToolkit";
         ContextMenu cm = new ContextMenu();
+        miCpu = new MenuItem(Texts.T("tray_cpu") + ": " + Texts.T("cpu_na"));
+        miCpu.Enabled = false;
+        cm.MenuItems.Add(miCpu);
         miShow = new MenuItem(Texts.T("tray_show"));
         miShow.Click += delegate { ShowFromTray(); };
         miTopMost = new MenuItem(Texts.T("tray_topmost"));
@@ -485,6 +542,94 @@ public class MainForm : Form
         BringToFront();
     }
 
+    void UpdateCpuMenuItem()
+    {
+        if (miCpu == null) return;
+        string value = _cpuTempOk ? (Math.Round(_cpuTempC) + " °C") : Texts.T("cpu_na");
+        miCpu.Text = Texts.T("tray_cpu") + ": " + value;
+    }
+
+    void RequestCpuTemp()
+    {
+        if (_s == null) return;
+        if (!_s.ShowCpuTemp)
+        {
+            _cpuTempOk = false;
+            ApplyCpuTempVisuals();
+            return;
+        }
+        if (_tempInFlight) return;
+        _tempInFlight = true;
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            double c;
+            bool ok = CpuTemp.TryReadAverage(out c);
+            try
+            {
+                BeginInvoke(new Action(delegate
+                {
+                    _tempInFlight = false;
+                    _cpuTempOk = ok;
+                    _cpuTempC = c;
+                    ApplyCpuTempVisuals();
+                }));
+            }
+            catch { _tempInFlight = false; }
+        });
+    }
+
+    void ApplyCpuTempVisuals()
+    {
+        UpdateCpuMenuItem();
+        if (tray == null) return;
+        if (!_s.ShowCpuTemp)
+        {
+            tray.Text = "MacBookToolkit";
+            tray.Icon = Icon != null ? Icon : SystemIcons.Application;
+            if (_tempTrayIcon != null) { _tempTrayIcon.Dispose(); _tempTrayIcon = null; }
+            return;
+        }
+        string value = _cpuTempOk ? (Math.Round(_cpuTempC) + " °C") : Texts.T("cpu_na");
+        tray.Text = "MacBookToolkit — " + Texts.T("tray_cpu") + " " + value;
+        Icon next = BuildTempIcon(_cpuTempOk ? (double?)Math.Round(_cpuTempC) : null);
+        if (next != null)
+        {
+            Icon old = _tempTrayIcon;
+            _tempTrayIcon = next;
+            tray.Icon = next;
+            if (old != null) old.Dispose();
+        }
+    }
+
+    Icon BuildTempIcon(double? celsius)
+    {
+        try
+        {
+            int size = 16;
+            Bitmap bmp = new Bitmap(size, size);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                Icon src = Icon != null ? Icon : SystemIcons.Application;
+                g.DrawIcon(src, new Rectangle(0, 0, size, size));
+                Color col;
+                if (celsius == null) col = Color.Gray;
+                else if (celsius.Value < 60) col = Color.FromArgb(46, 160, 67);
+                else if (celsius.Value < 78) col = Color.FromArgb(255, 165, 0);
+                else col = Color.FromArgb(220, 40, 40);
+                using (SolidBrush b = new SolidBrush(col)) g.FillRectangle(b, 0, size - 3, size, 3);
+            }
+            IntPtr h = bmp.GetHicon();
+            using (Icon temp = Icon.FromHandle(h))
+            {
+                Icon clone = (Icon)temp.Clone();
+                DestroyIcon(h);
+                bmp.Dispose();
+                return clone;
+            }
+        }
+        catch { return null; }
+    }
+
     void OpenRepository()
     {
         try
@@ -518,6 +663,15 @@ public class MainForm : Form
             cbTheme.Items = ThemeItems();
             cbTheme.SelectedIndex = idx < 0 ? 0 : idx;
         }
+        if (cbAccent != null)
+        {
+            int idxA = cbAccent.SelectedIndex;
+            cbAccent.Items = AccentItems();
+            cbAccent.SelectedIndex = idxA < 0 ? 0 : idxA;
+            cbAccent.ItemImages = AccentSwatches();
+        }
+        RefreshAccentVisuals();
+        UpdateCpuMenuItem();
         if (miShow != null) miShow.Text = Texts.T("tray_show");
         if (miTopMost != null) miTopMost.Text = Texts.T("tray_topmost");
         if (miAutoStart != null) miAutoStart.Text = Texts.T("tray_autostart");
@@ -541,7 +695,7 @@ public class MainForm : Form
     void WatchSystemTheme()
     {
         if (_s == null || _s.Theme != "system" || _theme == null) return;
-        ThemeColors now = ThemeManager.Resolve("system");
+        ThemeColors now = ThemeManager.Resolve(_s.Theme, _s.Accent);
         if (now.Dark != _theme.Dark || now.Accent.ToArgb() != _theme.Accent.ToArgb())
         {
             ApplyThemeNow();
@@ -549,10 +703,20 @@ public class MainForm : Form
         }
     }
 
+    void AccentChanged(object sender, EventArgs e)
+    {
+        if (_loading) return;
+        _s.Accent = ThemeManager.AccentKeys[Math.Max(0, cbAccent.SelectedIndex)];
+        _s.Save();
+        RefreshAccentVisuals();
+        ApplyThemeNow();
+    }
+
     void ApplyThemeNow()
     {
-        _theme = ThemeManager.Resolve(_s.Theme);
+        _theme = ThemeManager.Resolve(_s.Theme, _s.Accent);
         ThemeManager.ApplyTheme(this, _theme);
+        RefreshAccentVisuals();
         ApplyTitleBarTheme();
         Invalidate(true);
     }
@@ -634,12 +798,16 @@ public class MainForm : Form
         _s.AutoStart = chkAutoStart.Checked;
         _s.ShowTray = chkTray.Checked;
         _s.TopMost = chkTopMost.Checked;
+        _s.Accent = ThemeManager.AccentKeys[Math.Max(0, cbAccent.SelectedIndex)];
+        _s.ShowCpuTemp = chkCpuTemp.Checked;
         if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
         _s.Save();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
+        RefreshAccentVisuals();
+        RequestCpuTemp();
         _brightnessOk = SetBrightness(_s.NormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
@@ -653,6 +821,7 @@ public class MainForm : Form
         Settings d = new Settings();
         d.Lang = _s.Lang;
         d.Theme = _s.Theme;
+        d.Accent = _s.Accent;
         _s = d;
         _loading = true;
         chkScreen.Checked = d.ScreenEnabled;
@@ -667,12 +836,15 @@ public class MainForm : Form
         numScreenOff.Value = d.ScreenOffMin;
         chkAutoStart.Checked = d.AutoStart;
         chkTray.Checked = d.ShowTray;
+        chkCpuTemp.Checked = d.ShowCpuTemp;
         _loading = false;
         _s.Save();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
+        RefreshAccentVisuals();
+        RequestCpuTemp();
         _brightnessOk = SetBrightness(d.NormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
@@ -719,9 +891,11 @@ public class MainForm : Form
         tray.Visible = _s.ShowTray;
         ApplyTopMost(_s.TopMost, false);
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        RequestCpuTemp();
         Program.LogNote("calibrate", "brightness=" + _s.NormalPct + "%; video idle=" +
             _s.ScreenOffMin + " min; autostart=" + _s.AutoStart + "; topmost=" + _s.TopMost +
-            "; theme=" + _s.Theme + "; lang=" + _s.Lang);
+            "; theme=" + _s.Theme + "; accent=" + _s.Accent + "; cpuTemp=" + _s.ShowCpuTemp +
+            "; lang=" + _s.Lang);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -743,6 +917,8 @@ public class MainForm : Form
         {
             if (idleTimer != null) { idleTimer.Stop(); idleTimer.Dispose(); idleTimer = null; }
             if (themeWatch != null) { themeWatch.Stop(); themeWatch.Dispose(); themeWatch = null; }
+            if (tempTimer != null) { tempTimer.Stop(); tempTimer.Dispose(); tempTimer = null; }
+            if (_tempTrayIcon != null) { _tempTrayIcon.Dispose(); _tempTrayIcon = null; }
             RemoveHooks();
             if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
             if (tip != null) { tip.Dispose(); tip = null; }

@@ -8,6 +8,7 @@ $root = $PSScriptRoot
 $src  = Join-Path $root 'MacBookToolkit.cs'
 $ui   = Join-Path $root 'ThemeUi.cs'
 $txt  = Join-Path $root 'Strings.cs'
+$cpu  = Join-Path $root 'CpuTemp.cs'
 $asm  = Join-Path $root 'AssemblyInfo.cs'
 $ico  = Join-Path $root 'app.ico'
 $man  = Join-Path $root 'app.manifest'
@@ -16,6 +17,7 @@ $out  = Join-Path $root 'MacBookToolkit.exe'
 if (-not (Test-Path $src)) { throw "Source not found: $src" }
 if (-not (Test-Path $ui)) { throw "Theme source not found: $ui" }
 if (-not (Test-Path $txt)) { throw "Strings not found: $txt" }
+if (-not (Test-Path $cpu)) { throw "CpuTemp not found: $cpu" }
 if (-not (Test-Path $asm)) { throw "Assembly info not found: $asm" }
 if (-not (Test-Path $man)) { throw "Manifest not found: $man" }
 
@@ -36,6 +38,7 @@ $args = @(
     $src,
     $ui,
     $txt,
+    $cpu,
     $asm
 )
 

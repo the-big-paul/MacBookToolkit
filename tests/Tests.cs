@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Reflection;
 using System.Text;
 
@@ -29,7 +30,11 @@ public static class Tests
         TestDimClamp();
         TestLoadFlags();
         TestThemeAndTopMost();
+        TestAccentAndCpuSettings();
+        TestAccentPalette();
+        TestCpuTempConversion();
         TestTooltips();
+        TestNoEmoji();
         TestIdleDecision();
         TestLocalization();
         TestVersion();
@@ -57,6 +62,8 @@ public static class Tests
         Check("defaults KeyEnabled", s.KeyEnabled == true, "");
         Check("defaults TopMost", s.TopMost == false, "");
         Check("defaults Theme", s.Theme == "system", s.Theme);
+        Check("defaults Accent", s.Accent == "system", s.Accent);
+        Check("defaults ShowCpuTemp", s.ShowCpuTemp == false, "");
     }
 
     static void TestParsingAndClamping()
@@ -200,12 +207,65 @@ public static class Tests
         Check("fresh defaults: ParseFailed=false", s.ParseFailed == false, "");
     }
 
+    static void TestAccentAndCpuSettings()
+    {
+        Settings s = Settings.FromLines(new string[] { "Accent=neon", "ShowCpuTemp=maybe" });
+        Check("invalid Accent -> system", s.Accent == "system", s.Accent);
+        Check("invalid ShowCpuTemp -> default", s.ShowCpuTemp == false, "");
+        Settings b = Settings.FromLines(new string[] { "Accent=blue", "ShowCpuTemp=True" });
+        Check("Accent=blue kept", b.Accent == "blue", b.Accent);
+        Check("ShowCpuTemp parsed", b.ShowCpuTemp == true, "");
+    }
+
+    static void TestAccentPalette()
+    {
+        Check("accent palette size", ThemeManager.AccentKeys.Length == 10, "" + ThemeManager.AccentKeys.Length);
+        Check("accent blue", ThemeManager.AccentColorFor("blue").ToArgb() == Color.FromArgb(0, 95, 184).ToArgb(), "");
+        Check("accent green", ThemeManager.AccentColorFor("green").ToArgb() == Color.FromArgb(16, 124, 16).ToArgb(), "");
+        Check("accent unknown falls back", ThemeManager.AccentColorFor("nope").A == 255, "");
+        Check("theme dark from palette", ThemeManager.Build(true, ThemeManager.AccentColorFor("teal")).Dark, "");
+    }
+
+    static void TestCpuTempConversion()
+    {
+        double c = CpuTemp.FromKelvinTenths(2982);
+        Check("kelvin tenths 2982 -> 25.05 C", Math.Abs(c - 25.05) < 0.05, "" + c);
+        double z = CpuTemp.FromKelvinTenths(2731);
+        Check("kelvin tenths 2731 -> -0.05 C", Math.Abs(z + 0.05) < 0.06, "" + z);
+    }
+
+    static void TestNoEmoji()
+    {
+        string[] uiKeys = {
+            "sec_display","sec_key","sec_touch","sec_window","sec_options",
+            "chk_screen","lbl_idle","lbl_dim","lbl_normal","lbl_screenoff",
+            "chk_touch","lbl_block","chk_key","lbl_up","lbl_down",
+            "chk_topmost","lbl_theme","theme_system","theme_light","theme_dark",
+            "lbl_accent","accent_system","accent_blue","accent_purple","accent_pink","accent_red",
+            "accent_orange","accent_yellow","accent_green","accent_teal","accent_gray",
+            "chk_autostart","chk_tray","chk_cpu_temp","lbl_lang","btn_save","btn_reset",
+            "tray_show","tray_topmost","tray_autostart","tray_exit","tray_cpu","cpu_na"
+        };
+        foreach (string lang in new string[] { "ru", "uk", "en" })
+        {
+            Texts.Lang = lang;
+            foreach (string k in uiKeys)
+            {
+                string v = Texts.T(k);
+                bool clean = true;
+                foreach (char ch in v) if (ch >= 0x2500) clean = false;
+                Check("no emoji " + lang + " " + k, clean, v);
+            }
+        }
+        Texts.Lang = "ru";
+    }
+
     static void TestTooltips()
     {
         string[] keys = {
-            "tip_chk_screen","tip_idle","tip_dim","tip_normal","tip_chk_touch","tip_block",
-            "tip_chk_key","tip_up","tip_down","tip_screenoff","tip_topmost","tip_theme",
-            "tip_autostart","tip_tray","tip_lang","tip_save","tip_reset","version_tip"
+            "tip_chk_screen","tip_idle","tip_dim","tip_normal","tip_screenoff","tip_chk_touch","tip_block",
+            "tip_chk_key","tip_up","tip_down","tip_topmost","tip_theme","tip_accent",
+            "tip_autostart","tip_tray","tip_cpu_temp","tip_lang","tip_save","tip_reset","version_tip"
         };
         foreach (string lang in new string[] { "ru", "uk", "en" })
         {
@@ -288,13 +348,13 @@ public static class Tests
         Check("no empty translations", noEmpty, "");
 
         Texts.Lang = "en";
-        Check("T en", Texts.T("btn_save") == "💾 Save", Texts.T("btn_save"));
+        Check("T en", Texts.T("btn_save") == "Save", Texts.T("btn_save"));
         Texts.Lang = "ru";
-        Check("T ru", Texts.T("btn_save") == "💾 Сохранить", Texts.T("btn_save"));
+        Check("T ru", Texts.T("btn_save") == "Сохранить", Texts.T("btn_save"));
         Texts.Lang = "uk";
-        Check("T uk", Texts.T("btn_save") == "💾 Зберегти", Texts.T("btn_save"));
+        Check("T uk", Texts.T("btn_save") == "Зберегти", Texts.T("btn_save"));
         Texts.Lang = "zz";
-        Check("T unknown lang falls back to ru", Texts.T("btn_save") == "💾 Сохранить", Texts.T("btn_save"));
+        Check("T unknown lang falls back to ru", Texts.T("btn_save") == "Сохранить", Texts.T("btn_save"));
         Texts.Lang = "ru";
         Check("T missing key returns key", Texts.T("no_such_key") == "no_such_key", "");
     }
