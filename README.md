@@ -120,11 +120,17 @@ Or manually:
 csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
     /reference:System.dll /reference:System.Windows.Forms.dll ^
     /reference:System.Drawing.dll /reference:System.Management.dll ^
-    MacBookToolkit.cs
+    MacBookToolkit.cs AssemblyInfo.cs
 ```
 
-The result is a single portable `MacBookToolkit.exe` (~50 KB). No installer, no
-dependencies — copy it anywhere and run it.
+The result is a single portable `MacBookToolkit.exe` (~54 KB, version 1.1). No
+installer, no dependencies — copy it anywhere and run it.
+
+Logic tests (no hardware needed):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
 
 ### 🚀 Usage
 1. Run `MacBookToolkit.exe`.
@@ -140,6 +146,24 @@ dependencies — copy it anywhere and run it.
   `root\wmi:WmiMonitorBrightnessMethods`.
 - **Idle detection** uses `GetLastInputInfo`.
 - **Screen timeout** is applied with `powercfg`.
+
+### 🆕 Changelog
+
+**v1.1**
+- Fixed: dimming flickered when the idle timeout was set to 1 s (the restore
+  threshold was a hard-coded 2 s instead of the configured timeout).
+- Fixed: turning the dimming off while the screen was dimmed left the display
+  dark — brightness is now restored immediately.
+- Fixed: a "between presses" window above ~32 ms silently disabled key
+  auto-repeat; the setting is now capped at 30 ms (values above that are clamped
+  on load).
+- Settings are now validated and clamped on load, so a hand-edited
+  `settings.ini` can no longer put the program into a broken state.
+- Added a proper Windows version resource (file version **1.1.0.0**).
+- Unhandled exceptions are now logged to `%APPDATA%\MacBookToolkit\errors.log`.
+- Fixed a WMI handle leak in the brightness code.
+
+**v1.0** — first public release.
 
 ### 📄 License
 MIT — free to use, modify, merge, publish, distribute, sublicense and sell.
@@ -258,11 +282,17 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
     /reference:System.dll /reference:System.Windows.Forms.dll ^
     /reference:System.Drawing.dll /reference:System.Management.dll ^
-    MacBookToolkit.cs
+    MacBookToolkit.cs AssemblyInfo.cs
 ```
 
-На выходе — один портативный `MacBookToolkit.exe` (~50 КБ). Без установщика и
-зависимостей: скопируйте в любое место и запустите.
+На выходе — один портативный `MacBookToolkit.exe` (~54 КБ, версия 1.1). Без
+установщика и зависимостей: скопируйте в любое место и запустите.
+
+Логические тесты (железо не нужно):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
 
 ### 🚀 Использование
 1. Запустите `MacBookToolkit.exe`.
@@ -279,6 +309,25 @@ csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
   `root\wmi:WmiMonitorBrightnessMethods`.
 - **Определение простоя** — через `GetLastInputInfo`.
 - **Таймаут экрана** применяется командой `powercfg`.
+
+### 🆕 Changelog
+
+**v1.1**
+- Исправлено: затемнение мерцало, если простой до затемнения был выставлен в 1 с
+  (порог возврата был жёстко 2 с вместо настроенного таймаута).
+- Исправлено: при отключении затемнения в приглушённом состоянии экран оставался
+  тёмным — теперь яркость сразу восстанавливается.
+- Исправлено: окно «между нажатиями» больше ~32 мс незаметно отключало
+  авто-повтор клавиш; ползунок ограничен 30 мс (при загрузке значения
+  обрезаются).
+- `settings.ini` теперь валидируется и обрезается по допустимым диапазонам, так
+  что вручную исправленный файл больше не может привести программу в странное
+  состояние.
+- Добавлен нормальный Version-ресурс Windows (версия файла **1.1.0.0**).
+- Необработанные исключения теперь пишутся в `%APPDATA%\MacBookToolkit\errors.log`.
+- Исправлена утечка WMI-хэндлов в коде яркости.
+
+**v1.0** — первый публичный релиз.
 
 ### 📄 Лицензия
 MIT — можно использовать, изменять, объединять, публиковать, распространять,

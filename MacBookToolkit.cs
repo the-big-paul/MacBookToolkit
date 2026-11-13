@@ -34,43 +34,67 @@ public class Settings
         return Path.Combine(Dir(), "settings.ini");
     }
 
+    public const int MaxDebounceDownMs = 30;
+
     public static Settings Load()
     {
         Settings s = new Settings();
         try
         {
             string fp = FilePath();
-            if (File.Exists(fp))
-            {
-                string[] lines = File.ReadAllLines(fp);
-                foreach (string line in lines)
-                {
-                    string[] p = line.Split('=');
-                    if (p.Length != 2) continue;
-                    string k = p[0].Trim();
-                    string v = p[1].Trim();
-                    bool b; int i;
-                    switch (k)
-                    {
-                        case "ScreenEnabled": if (bool.TryParse(v, out b)) s.ScreenEnabled = b; break;
-                        case "IdleSec": if (int.TryParse(v, out i)) s.IdleSec = i; break;
-                        case "DimPct": if (int.TryParse(v, out i)) s.DimPct = i; break;
-                        case "NormalPct": if (int.TryParse(v, out i)) s.NormalPct = i; break;
-                        case "TouchEnabled": if (bool.TryParse(v, out b)) s.TouchEnabled = b; break;
-                        case "BlockMs": if (int.TryParse(v, out i)) s.BlockMs = i; break;
-                        case "KeyEnabled": if (bool.TryParse(v, out b)) s.KeyEnabled = b; break;
-                        case "DebounceUpMs": if (int.TryParse(v, out i)) s.DebounceUpMs = i; break;
-                        case "DebounceDownMs": if (int.TryParse(v, out i)) s.DebounceDownMs = i; break;
-                        case "ScreenOffMin": if (int.TryParse(v, out i)) s.ScreenOffMin = i; break;
-                        case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
-                        case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
-                        case "Lang": s.Lang = v; break;
-                    }
-                }
-            }
+            if (File.Exists(fp)) s = FromLines(File.ReadAllLines(fp));
         }
         catch { }
         return s;
+    }
+
+    public static Settings FromLines(string[] lines)
+    {
+        Settings s = new Settings();
+        if (lines == null) return s;
+        foreach (string line in lines)
+        {
+            string[] p = line.Split('=');
+            if (p.Length != 2) continue;
+            string k = p[0].Trim();
+            string v = p[1].Trim();
+            bool b; int i;
+            switch (k)
+            {
+                case "ScreenEnabled": if (bool.TryParse(v, out b)) s.ScreenEnabled = b; break;
+                case "IdleSec": if (int.TryParse(v, out i)) s.IdleSec = i; break;
+                case "DimPct": if (int.TryParse(v, out i)) s.DimPct = i; break;
+                case "NormalPct": if (int.TryParse(v, out i)) s.NormalPct = i; break;
+                case "TouchEnabled": if (bool.TryParse(v, out b)) s.TouchEnabled = b; break;
+                case "BlockMs": if (int.TryParse(v, out i)) s.BlockMs = i; break;
+                case "KeyEnabled": if (bool.TryParse(v, out b)) s.KeyEnabled = b; break;
+                case "DebounceUpMs": if (int.TryParse(v, out i)) s.DebounceUpMs = i; break;
+                case "DebounceDownMs": if (int.TryParse(v, out i)) s.DebounceDownMs = i; break;
+                case "ScreenOffMin": if (int.TryParse(v, out i)) s.ScreenOffMin = i; break;
+                case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
+                case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
+                case "Lang": s.Lang = v; break;
+            }
+        }
+        s.Normalize();
+        return s;
+    }
+
+    static int ClampInt(int v, int min, int max)
+    {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    public void Normalize()
+    {
+        IdleSec = ClampInt(IdleSec, 1, 300);
+        DimPct = ClampInt(DimPct, 1, 100);
+        NormalPct = ClampInt(NormalPct, 1, 100);
+        BlockMs = ClampInt(BlockMs, 50, 2000);
+        DebounceUpMs = ClampInt(DebounceUpMs, 0, 200);
+        DebounceDownMs = ClampInt(DebounceDownMs, 0, MaxDebounceDownMs);
+        ScreenOffMin = ClampInt(ScreenOffMin, 1, 60);
+        if (Lang != "ru" && Lang != "uk" && Lang != "en") Lang = "ru";
     }
 
     public void Save()
@@ -133,7 +157,7 @@ public static class L10n
         {"tip_block","Сколько миллисекунд после последнего нажатия клавиши тачпад игнорирует касания."},
         {"tip_chk_key","Убирает «дребезг» butterfly-клавиатуры — когда одна клавиша срабатывает дважды."},
         {"tip_up","Повторное нажатие той же клавиши быстрее этого времени считается дребезгом и отбрасывается."},
-        {"tip_down","Окно между двумя нажатиями одной клавиши без отпускания. Слишком большое может мешать быстрому набору."},
+        {"tip_down","Окно между двумя нажатиями одной клавиши без отпускания. Не ставьте больше 30 мс — иначе при удержании клавиши перестанет работать авто-повтор."},
         {"tip_screenoff","Через сколько минут простоя Windows выключает экран."},
         {"tip_autostart","Запускать программу автоматически при входе в Windows."},
         {"tip_tray","Показывать иконку программы в системном трее (рядом с часами)."},
@@ -172,7 +196,7 @@ public static class L10n
         {"tip_block","Скільки мілісекунд після останнього натискання клавіші тачпад ігнорує торкання."},
         {"tip_chk_key","Прибирає «брязкіт» butterfly-клавіатури — коли одна клавіша спрацьовує двічі."},
         {"tip_up","Повторне натискання тієї ж клавіші швидше цього часу вважається брязкотом і відкидається."},
-        {"tip_down","Вікно між двома натисканнями однієї клавіші без відпускання. Занадто велике може заважати швидкому набору."},
+        {"tip_down","Вікно між двома натисканнями однієї клавіші без відпускання. Не ставте більше 30 мс — інакше під час утримання клавіші перестане працювати автоповтор."},
         {"tip_screenoff","Через скільки хвилин простою Windows вимикає екран."},
         {"tip_autostart","Запускати програму автоматично при вході у Windows."},
         {"tip_tray","Показувати іконку програми в системному треї (біля годинника)."},
@@ -211,7 +235,7 @@ public static class L10n
         {"tip_block","Milliseconds after the last keypress during which the touchpad ignores touches."},
         {"tip_chk_key","Removes butterfly-keyboard chatter (a key firing twice)."},
         {"tip_up","A repeat press of the same key within this time is treated as chatter and dropped."},
-        {"tip_down","Window between two presses of one key without release. Too large may hurt fast typing."},
+        {"tip_down","Window between two presses of one key without release. Do not exceed 30 ms — otherwise holding a key stops auto-repeating."},
         {"tip_screenoff","Minutes of inactivity before Windows turns the screen off."},
         {"tip_autostart","Start the app automatically at Windows login."},
         {"tip_tray","Show the app icon in the system tray (near the clock)."},
@@ -227,6 +251,27 @@ public static class L10n
         string v;
         if (d.TryGetValue(key, out v)) return v;
         return key;
+    }
+}
+
+public class KeyDebouncer
+{
+    readonly uint[] _lastUp = new uint[256];
+    readonly uint[] _lastDown = new uint[256];
+
+    public void NoteKeyUp(int vk, uint now)
+    {
+        _lastUp[vk & 0xFF] = now;
+    }
+
+    public bool ShouldDropKeyDown(int vk, uint now, int upMs, int downMs)
+    {
+        int key = vk & 0xFF;
+        uint dtUp = _lastUp[key] == 0 ? uint.MaxValue : unchecked(now - _lastUp[key]);
+        uint dtDown = _lastDown[key] == 0 ? uint.MaxValue : unchecked(now - _lastDown[key]);
+        if (dtUp < (uint)upMs || dtDown < (uint)downMs) return true;
+        _lastDown[key] = now;
+        return false;
     }
 }
 
@@ -262,8 +307,7 @@ public class MainForm : Form
     static IntPtr _kbHook = IntPtr.Zero;
     static IntPtr _msHook = IntPtr.Zero;
     static uint _lastKeyTick = 0;
-    static uint[] _lastKeyup = new uint[256];
-    static uint[] _lastKeydown = new uint[256];
+    static readonly KeyDebouncer _debounce = new KeyDebouncer();
     static Settings _s;
     static bool _dimmed = false;
 
@@ -387,7 +431,7 @@ public class MainForm : Form
         lblUp = AddLabel("lbl_up", 60, tpKey);
         numUp = AddNum(60, 0, 200, 5, _s.DebounceUpMs, tpKey);
         lblDown = AddLabel("lbl_down", 105, tpKey);
-        numDown = AddNum(105, 0, 100, 5, _s.DebounceDownMs, tpKey);
+        numDown = AddNum(105, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, tpKey);
 
         TabPage tpPower = new TabPage("Питание");
         lblScreenOff = AddLabel("lbl_screenoff", 15, tpPower);
@@ -533,7 +577,8 @@ public class MainForm : Form
         ApplyPower();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        if (_s.ScreenEnabled) SetBrightness(_s.NormalPct);
+        SetBrightness(_s.NormalPct);
+        _dimmed = false;
     }
 
     void ResetClick(object sender, EventArgs e)
@@ -562,7 +607,7 @@ public class MainForm : Form
         ApplyPower();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        SetBrightness(d.ScreenEnabled ? d.NormalPct : -1);
+        SetBrightness(d.NormalPct);
         _dimmed = false;
         MessageBox.Show(L10n.T("reset_done"), "MacBookToolkit");
     }
@@ -645,13 +690,20 @@ public class MainForm : Form
     static void SetBrightness(int pct)
     {
         if (pct < 0) return;
+        if (pct > 100) pct = 100;
         try
         {
-            ManagementObjectSearcher s = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightnessMethods");
-            foreach (ManagementObject m in s.Get())
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightnessMethods"))
+            using (ManagementObjectCollection monitors = searcher.Get())
             {
-                m.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)pct });
-                break;
+                foreach (ManagementObject m in monitors)
+                {
+                    using (m)
+                    {
+                        m.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)pct });
+                    }
+                    break;
+                }
             }
         }
         catch { }
@@ -665,16 +717,20 @@ public class MainForm : Form
         return (uint)(Environment.TickCount - (int)lii.dwTime);
     }
 
+    static bool WantsDim(uint idleMs, Settings s)
+    {
+        return s.ScreenEnabled && idleMs >= (uint)(s.IdleSec * 1000);
+    }
+
     void IdleTick(object sender, EventArgs e)
     {
-        if (!_s.ScreenEnabled) return;
-        uint idle = IdleMs();
-        if (idle >= (uint)(_s.IdleSec * 1000) && !_dimmed)
+        bool wantDim = WantsDim(IdleMs(), _s);
+        if (wantDim && !_dimmed)
         {
             SetBrightness(_s.DimPct);
             _dimmed = true;
         }
-        else if (idle < 2000 && _dimmed)
+        else if (!wantDim && _dimmed)
         {
             SetBrightness(_s.NormalPct);
             _dimmed = false;
@@ -712,15 +768,9 @@ public class MainForm : Form
                 if (isDown) _lastKeyTick = now;
                 if (_s.KeyEnabled && !Excluded(vk))
                 {
-                    if (isUp) _lastKeyup[vk] = now;
-                    else if (isDown)
-                    {
-                        uint dtUp = _lastKeyup[vk] == 0 ? uint.MaxValue : (uint)(now - _lastKeyup[vk]);
-                        uint dtDown = _lastKeydown[vk] == 0 ? uint.MaxValue : (uint)(now - _lastKeydown[vk]);
-                        if (dtUp < (uint)_s.DebounceUpMs || dtDown < (uint)_s.DebounceDownMs)
-                            return (IntPtr)1;
-                        _lastKeydown[vk] = now;
-                    }
+                    if (isUp) _debounce.NoteKeyUp(vk, now);
+                    else if (isDown && _debounce.ShouldDropKeyDown(vk, now, _s.DebounceUpMs, _s.DebounceDownMs))
+                        return (IntPtr)1;
                 }
             }
         }
@@ -768,11 +818,27 @@ public class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e) { LogError("UI thread", e.Exception); };
+        AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { LogError("AppDomain", e.ExceptionObject as Exception); };
         bool createdNew;
         using (System.Threading.Mutex mutex = new System.Threading.Mutex(true, "MacBookToolkit_SingleInstance", out createdNew))
         {
             if (!createdNew) return;
             Application.Run(new MainForm());
         }
+    }
+
+    static void LogError(string source, Exception ex)
+    {
+        try
+        {
+            string dir = Settings.Dir();
+            Directory.CreateDirectory(dir);
+            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " [" + source + "] " +
+                (ex == null ? "unknown exception" : ex.ToString()) + Environment.NewLine;
+            File.AppendAllText(Path.Combine(dir, "errors.log"), line);
+        }
+        catch { }
     }
 }

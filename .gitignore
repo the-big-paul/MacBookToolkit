@@ -8,6 +8,9 @@ settings.ini
 
 # IDE
 .vs/
+
+# Test build output
+tests/bin/
 *.user
 *.suo
 bin/

@@ -6,10 +6,12 @@
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $src  = Join-Path $root 'MacBookToolkit.cs'
+$asm  = Join-Path $root 'AssemblyInfo.cs'
 $ico  = Join-Path $root 'app.ico'
 $out  = Join-Path $root 'MacBookToolkit.exe'
 
 if (-not (Test-Path $src)) { throw "Source not found: $src" }
+if (-not (Test-Path $asm)) { throw "Assembly info not found: $asm" }
 
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
@@ -24,7 +26,8 @@ $args = @(
     '/reference:System.Windows.Forms.dll',
     '/reference:System.Drawing.dll',
     '/reference:System.Management.dll',
-    $src
+    $src,
+    $asm
 )
 
 & $csc $args
