@@ -228,7 +228,7 @@ public class MainForm : Form
     Dictionary<Control, string> _tipKeys = new Dictionary<Control, string>();
     ToolTip tip;
 
-    ThemedCard cardScreen, cardKey, cardTouch, cardPower, cardWindow;
+    ThemedCard cardScreen, cardKey, cardTouch, cardPower, cardWindow, cardOptions;
     ThemedCaption caption;
     ThemedLabel lblIdle, lblDim, lblNormal;
     ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblLang;
@@ -349,58 +349,63 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(640), Ui.Px(528));
+        ClientSize = new Size(Ui.Px(680), Ui.Px(598));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         tip = new ToolTip();
-        tip.AutoPopDelay = 15000;
+        tip.AutoPopDelay = 20000;
         tip.InitialDelay = 350;
         tip.ReshowDelay = 80;
 
         caption = new ThemedCaption();
         caption.Title = "MacBookToolkit";
         caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
-        caption.SetBounds(0, 0, Ui.Px(640), Ui.Px(36));
+        caption.VersionTip = Texts.T("version_tip");
+        caption.SetBounds(0, 0, Ui.Px(680), Ui.Px(40));
         caption.CloseClick += delegate { Close(); };
         caption.MinimizeClick += delegate { WindowState = FormWindowState.Minimized; };
+        caption.VersionClick += delegate { OpenRepository(); };
         Controls.Add(caption);
 
-        cardScreen = Card("sec_screen", 14, 48, 300, 150);
-        chkScreen = Chk("chk_screen", 12, 26, 276, cardScreen, _s.ScreenEnabled);
-        lblIdle = Lbl("lbl_idle", 12, 58, 190, 22, cardScreen, false, false);
-        numIdle = Spn(208, 54, 80, 1, 300, 1, _s.IdleSec, cardScreen);
-        lblDim = Lbl("lbl_dim", 12, 88, 190, 22, cardScreen, false, false);
-        numDim = Spn(208, 84, 80, 1, 100, 1, _s.DimPct, cardScreen);
-        lblNormal = Lbl("lbl_normal", 12, 118, 190, 22, cardScreen, false, false);
-        numNormal = Spn(208, 114, 80, 1, 100, 1, _s.NormalPct, cardScreen);
+        cardScreen = Card("sec_screen", 16, 56, 316, 166);
+        chkScreen = Chk("chk_screen", 14, 30, 288, cardScreen, _s.ScreenEnabled);
+        lblIdle = Lbl("lbl_idle", 14, 64, 200, 26, cardScreen, false, false);
+        numIdle = Spn(220, 64, 80, 1, 300, 1, _s.IdleSec, cardScreen);
+        lblDim = Lbl("lbl_dim", 14, 98, 200, 26, cardScreen, false, false);
+        numDim = Spn(220, 98, 80, 1, 100, 1, _s.DimPct, cardScreen);
+        lblNormal = Lbl("lbl_normal", 14, 132, 200, 26, cardScreen, false, false);
+        numNormal = Spn(220, 132, 80, 1, 100, 1, _s.NormalPct, cardScreen);
 
-        cardKey = Card("sec_key", 326, 48, 300, 150);
-        chkKey = Chk("chk_key", 12, 26, 276, cardKey, _s.KeyEnabled);
-        lblUp = Lbl("lbl_up", 12, 58, 190, 22, cardKey, false, false);
-        numUp = Spn(208, 54, 80, 0, 200, 5, _s.DebounceUpMs, cardKey);
-        lblDown = Lbl("lbl_down", 12, 88, 190, 22, cardKey, false, false);
-        numDown = Spn(208, 84, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey);
+        cardKey = Card("sec_key", 348, 56, 316, 166);
+        chkKey = Chk("chk_key", 14, 30, 288, cardKey, _s.KeyEnabled);
+        lblUp = Lbl("lbl_up", 14, 64, 200, 26, cardKey, false, false);
+        numUp = Spn(220, 64, 80, 0, 200, 5, _s.DebounceUpMs, cardKey);
+        lblDown = Lbl("lbl_down", 14, 98, 200, 26, cardKey, false, false);
+        numDown = Spn(220, 98, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey);
 
-        cardTouch = Card("sec_touch", 14, 210, 300, 96);
-        chkTouch = Chk("chk_touch", 12, 26, 276, cardTouch, _s.TouchEnabled);
-        lblBlock = Lbl("lbl_block", 12, 56, 190, 22, cardTouch, false, false);
-        numBlock = Spn(208, 52, 80, 50, 2000, 50, _s.BlockMs, cardTouch);
+        cardTouch = Card("sec_touch", 16, 234, 316, 98);
+        chkTouch = Chk("chk_touch", 14, 30, 288, cardTouch, _s.TouchEnabled);
+        lblBlock = Lbl("lbl_block", 14, 64, 200, 26, cardTouch, false, false);
+        numBlock = Spn(220, 64, 80, 50, 2000, 50, _s.BlockMs, cardTouch);
 
-        cardPower = Card("sec_power", 326, 210, 300, 96);
-        lblScreenOff = Lbl("lbl_screenoff", 12, 26, 190, 22, cardPower, false, false);
-        numScreenOff = Spn(208, 22, 80, 1, 60, 1, _s.ScreenOffMin, cardPower);
+        cardPower = Card("sec_power", 348, 234, 316, 98);
+        lblScreenOff = Lbl("lbl_screenoff", 14, 64, 200, 26, cardPower, false, false);
+        numScreenOff = Spn(220, 64, 80, 1, 60, 1, _s.ScreenOffMin, cardPower);
 
-        cardWindow = Card("sec_window", 14, 318, 612, 142);
-        chkTopMost = Chk("chk_topmost", 12, 26, 290, cardWindow, _s.TopMost);
-        lblTheme = Lbl("lbl_theme", 12, 58, 150, 22, cardWindow, false, false);
-        cbTheme = Sel(168, 54, 180, ThemeItems(), cardWindow);
-        chkAutoStart = Chk("chk_autostart", 320, 26, 280, cardWindow, _s.AutoStart);
-        chkTray = Chk("chk_tray", 320, 56, 280, cardWindow, _s.ShowTray);
-        lblLang = Lbl("lbl_lang", 320, 88, 140, 22, cardWindow, false, false);
-        cbLang = Sel(462, 84, 136, new string[] { "Русский", "Українська", "English" }, cardWindow);
+        cardWindow = Card("sec_window", 16, 344, 648, 74);
+        lblTheme = Lbl("lbl_theme", 14, 30, 150, 26, cardWindow, false, false);
+        cbTheme = Sel(168, 30, 200, ThemeItems(), cardWindow);
+        chkTopMost = Chk("chk_topmost", 390, 30, 240, cardWindow, _s.TopMost);
 
-        btnSave = Btn("btn_save", 14, 472, 300, 40);
-        btnReset = Btn("btn_reset", 326, 472, 300, 40);
+        cardOptions = Card("sec_options", 16, 430, 648, 98);
+        chkAutoStart = Chk("chk_autostart", 14, 30, 300, cardOptions, _s.AutoStart);
+        chkTray = Chk("chk_tray", 14, 64, 300, cardOptions, _s.ShowTray);
+        lblLang = Lbl("lbl_lang", 330, 30, 146, 26, cardOptions, false, false);
+        cbLang = Sel(480, 30, 150, new string[] { "Русский", "Українська", "English" }, cardOptions);
+        cbLang.ItemImages = new Image[] { Flags.Draw("ru"), Flags.Draw("uk"), Flags.Draw("en") };
+
+        btnSave = Btn("btn_save", 16, 540, 316, 42);
+        btnReset = Btn("btn_reset", 348, 540, 316, 42);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
@@ -480,6 +485,15 @@ public class MainForm : Form
         BringToFront();
     }
 
+    void OpenRepository()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/the-big-paul/MacBookToolkit") { UseShellExecute = true });
+        }
+        catch (Exception ex) { Program.LogError("open repository", ex); }
+    }
+
     // ---------- language / theme ----------
     void ApplyLanguage()
     {
@@ -495,6 +509,7 @@ public class MainForm : Form
         if (caption != null)
         {
             caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
+            caption.VersionTip = Texts.T("version_tip");
             caption.Invalidate();
         }
         if (cbTheme != null)

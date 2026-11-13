@@ -29,6 +29,7 @@ public static class Tests
         TestDimClamp();
         TestLoadFlags();
         TestThemeAndTopMost();
+        TestTooltips();
         TestIdleDecision();
         TestLocalization();
         TestVersion();
@@ -197,6 +198,25 @@ public static class Tests
         Settings s = new Settings();
         Check("fresh defaults: Existed=false", s.Existed == false, "");
         Check("fresh defaults: ParseFailed=false", s.ParseFailed == false, "");
+    }
+
+    static void TestTooltips()
+    {
+        string[] keys = {
+            "tip_chk_screen","tip_idle","tip_dim","tip_normal","tip_chk_touch","tip_block",
+            "tip_chk_key","tip_up","tip_down","tip_screenoff","tip_topmost","tip_theme",
+            "tip_autostart","tip_tray","tip_lang","tip_save","tip_reset","version_tip"
+        };
+        foreach (string lang in new string[] { "ru", "uk", "en" })
+        {
+            Texts.Lang = lang;
+            foreach (string k in keys)
+            {
+                string v = Texts.T(k);
+                Check("tooltip " + lang + " " + k, v != k && v.Length >= 25, "len=" + v.Length);
+            }
+        }
+        Texts.Lang = "ru";
     }
 
     static void TestThemeAndTopMost()

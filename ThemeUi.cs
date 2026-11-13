@@ -238,6 +238,7 @@ public class ThemedLabel : Label, IThemed
     public ThemedLabel()
     {
         AutoSize = false;
+        AutoEllipsis = true;
         UseCompatibleTextRendering = false;
         UseMnemonic = false;
     }
@@ -385,7 +386,7 @@ public class ThemedSpinner : Control, IThemed
                  ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
         SetStyle(ControlStyles.StandardClick | ControlStyles.StandardDoubleClick, true);
         TabStop = true;
-        Cursor = Cursors.IBeam;
+        Cursor = Cursors.Default;
     }
 
     public int Minimum { get { return _min; } set { _min = value; Value = _value; } }
@@ -467,6 +468,20 @@ public class ThemedSpinner : Control, IThemed
         Nudge(e.Delta > 0 ? +_inc : -_inc);
     }
 
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        bool overButtons = e.X >= Width - ButtonW;
+        Cursor desired = overButtons ? Cursors.Hand : Cursors.IBeam;
+        if (Cursor != desired) Cursor = desired;
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        Cursor = Cursors.Default;
+    }
+
     void Nudge(int delta)
     {
         Value = _value + delta;
@@ -529,6 +544,7 @@ public class ThemedSelect : Control, IThemed
     Color _surface = Color.Transparent;
     bool _hover;
     string[] _items = new string[0];
+    Image[] _images = new Image[0];
     int _index;
     SelectPopup _popup;
 
@@ -551,6 +567,12 @@ public class ThemedSelect : Control, IThemed
             if (_index >= _items.Length) _index = Math.Max(0, _items.Length - 1);
             Invalidate();
         }
+    }
+
+    public Image[] ItemImages
+    {
+        get { return _images; }
+        set { _images = value == null ? new Image[0] : value; Invalidate(); }
     }
 
     public int SelectedIndex
@@ -590,7 +612,15 @@ public class ThemedSelect : Control, IThemed
             using (SolidBrush b = new SolidBrush(t.InputBack)) g.FillPath(b, p);
             using (Pen pen = new Pen(_hover ? t.Accent : t.Border)) g.DrawPath(pen, p);
         }
-        Rectangle txt = new Rectangle(Ui.Px(7), 0, Width - Ui.Px(24), Height);
+        Image img = (_index >= 0 && _index < _images.Length) ? _images[_index] : null;
+        int left = Ui.Px(7);
+        if (img != null)
+        {
+            int ih = Ui.Px(11), iw = Ui.Px(17);
+            g.DrawImage(img, new Rectangle(left, (Height - ih) / 2, iw, ih));
+            left += iw + Ui.Px(7);
+        }
+        Rectangle txt = new Rectangle(left, 0, Width - left - Ui.Px(20), Height);
         string text = (_items.Length > 0 && _index >= 0 && _index < _items.Length) ? _items[_index] : "";
         TextRenderer.DrawText(g, text, Font, txt, t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         int cx = Width - Ui.Px(12), cy = Height / 2;
@@ -621,7 +651,7 @@ public class ThemedSelect : Control, IThemed
         if (_popup != null) { _popup.Close(); _popup = null; }
         if (_items.Length == 0) return;
         ThemeColors t = _t != null ? _t : ThemeManager.Build(false);
-        _popup = new SelectPopup(_items, _index, t, Font);
+        _popup = new SelectPopup(_items, _index, t, Font, _images);
         Rectangle scr = Screen.FromControl(this).WorkingArea;
         Point p = PointToScreen(new Point(0, Height));
         int rowH = Ui.Px(24), pad = Ui.Px(4);
@@ -648,6 +678,7 @@ public class ThemedSelect : Control, IThemed
 public class SelectPopup : Form
 {
     string[] _items;
+    Image[] _images;
     int _selected = -1;
     int _hover = -1;
     ThemeColors _t;
@@ -656,9 +687,9 @@ public class SelectPopup : Form
     public int Pad = 4;
     public event Action<int> RowChosen;
 
-    public SelectPopup(string[] items, int selected, ThemeColors t, Font font)
+    public SelectPopup(string[] items, int selected, ThemeColors t, Font font, Image[] images)
     {
-        _items = items; _selected = selected; _t = t; _font = font;
+        _items = items; _selected = selected; _t = t; _font = font; _images = images;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
@@ -712,7 +743,14 @@ public class SelectPopup : Form
             Rectangle r = new Rectangle(Pad, Pad + i * RowHeight, Width - Pad * 2, RowHeight);
             if (i == _hover) { using (SolidBrush b = new SolidBrush(_t.SelBack)) g.FillRectangle(b, r); }
             if (i == _selected) { using (SolidBrush b = new SolidBrush(_t.Accent)) g.FillRectangle(b, new Rectangle(r.X, r.Y + Ui.Px(4), Ui.Px(2), r.Height - Ui.Px(8))); }
-            TextRenderer.DrawText(g, _items[i], _font, new Rectangle(r.X + Ui.Px(8), r.Y, r.Width - Ui.Px(10), r.Height),
+            int textX = r.X + Ui.Px(8);
+            if (_images != null && i < _images.Length && _images[i] != null)
+            {
+                int ih = Ui.Px(11), iw = Ui.Px(17);
+                g.DrawImage(_images[i], new Rectangle(textX, r.Y + (r.Height - ih) / 2, iw, ih));
+                textX += iw + Ui.Px(8);
+            }
+            TextRenderer.DrawText(g, _items[i], _font, new Rectangle(textX, r.Y, r.Right - textX - Ui.Px(2), r.Height),
                 _t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
         using (Pen pen = new Pen(_t.Border)) g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
@@ -730,16 +768,28 @@ public class ThemedCaption : Control, IThemed
 
     public string Title = "MacBookToolkit";
     public string VersionText = "";
+    public string VersionTip = "";
     public event EventHandler CloseClick;
     public event EventHandler MinimizeClick;
+    public event EventHandler VersionClick;
 
     ThemeColors _t;
-    bool _closeHover, _minHover;
+    ToolTip _tip;
+    bool _closeHover, _minHover, _versionHover;
 
     public ThemedCaption()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                  ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        _tip = new ToolTip();
+        _tip.InitialDelay = 400;
+        _tip.AutoPopDelay = 15000;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _tip != null) { _tip.Dispose(); _tip = null; }
+        base.Dispose(disposing);
     }
 
     public void ApplyTheme(ThemeColors t, Color surface)
@@ -753,6 +803,7 @@ public class ThemedCaption : Control, IThemed
 
     Rectangle MinRect { get { return new Rectangle(Width - BtnW * 2, 0, BtnW, Height); } }
     Rectangle CloseRect { get { return new Rectangle(Width - BtnW, 0, BtnW, Height); } }
+    Rectangle VersionRect { get { return new Rectangle(Width - BtnW * 2 - Ui.Px(64), Ui.Px(4), Ui.Px(60), Height - Ui.Px(8)); } }
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -782,9 +833,17 @@ public class ThemedCaption : Control, IThemed
         {
             using (Font f = new Font("Segoe UI", 8f))
             {
-                Rectangle rv = new Rectangle(Width - BtnW * 2 - Ui.Px(56), 0, Ui.Px(52), Height);
-                TextRenderer.DrawText(g, VersionText, f, rv, t.Sub,
+                Color vc = _versionHover ? t.Accent : t.Sub;
+                TextRenderer.DrawText(g, VersionText, f, VersionRect, vc,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                if (_versionHover)
+                {
+                    using (Pen pen = new Pen(t.Accent, Math.Max(1f, Ui.Px(1f))))
+                    {
+                        Size ts = TextRenderer.MeasureText(VersionText, f);
+                        g.DrawLine(pen, VersionRect.Right - ts.Width, VersionRect.Bottom - Ui.Px(6), VersionRect.Right, VersionRect.Bottom - Ui.Px(6));
+                    }
+                }
             }
         }
 
@@ -813,18 +872,28 @@ public class ThemedCaption : Control, IThemed
         base.OnMouseMove(e);
         bool min = MinRect.Contains(e.Location);
         bool close = CloseRect.Contains(e.Location);
+        bool version = !string.IsNullOrEmpty(VersionText) && VersionRect.Contains(e.Location);
+        if (version != _versionHover)
+        {
+            _versionHover = version;
+            if (version) { if (_tip != null) _tip.SetToolTip(this, VersionTip); }
+            else { if (_tip != null) _tip.SetToolTip(this, ""); }
+            Invalidate();
+        }
         if (min != _minHover || close != _closeHover)
         {
             _minHover = min; _closeHover = close;
-            Cursor = (min || close) ? Cursors.Default : Cursors.SizeAll;
             Invalidate();
         }
+        Cursor desired = version ? Cursors.Hand : ((min || close) ? Cursors.Default : Cursors.SizeAll);
+        if (Cursor != desired) Cursor = desired;
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        _minHover = _closeHover = false;
+        _minHover = _closeHover = _versionHover = false;
+        if (_tip != null) _tip.SetToolTip(this, "");
         Cursor = Cursors.Default;
         Invalidate();
     }
@@ -833,6 +902,7 @@ public class ThemedCaption : Control, IThemed
     {
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
+        if (VersionRect.Contains(e.Location)) { if (VersionClick != null) VersionClick(this, EventArgs.Empty); return; }
         if (CloseRect.Contains(e.Location)) { if (CloseClick != null) CloseClick(this, EventArgs.Empty); return; }
         if (MinRect.Contains(e.Location)) { if (MinimizeClick != null) MinimizeClick(this, EventArgs.Empty); return; }
         if (Parent != null)
@@ -908,5 +978,41 @@ public class ThemedButton : Button, IThemed
         }
         TextRenderer.DrawText(g, Text, Font, ClientRectangle, fore,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+    }
+}
+
+// ---------- Small language flags ----------
+public static class Flags
+{
+    public static Bitmap Draw(string code)
+    {
+        int w = Ui.Px(20), h = Ui.Px(13);
+        Bitmap bmp = new Bitmap(w, h);
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            Rectangle r = new Rectangle(0, 0, w, h);
+            if (code == "ru")
+            {
+                using (SolidBrush b = new SolidBrush(Color.White)) g.FillRectangle(b, new Rectangle(0, 0, w, h / 3));
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(0, 57, 166))) g.FillRectangle(b, new Rectangle(0, h / 3, w, h / 3));
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(213, 43, 30))) g.FillRectangle(b, new Rectangle(0, 2 * h / 3, w, h - 2 * h / 3));
+            }
+            else if (code == "uk")
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(0, 87, 183))) g.FillRectangle(b, new Rectangle(0, 0, w, h / 2));
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(255, 215, 0))) g.FillRectangle(b, new Rectangle(0, h / 2, w, h - h / 2));
+            }
+            else
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(1, 33, 105))) g.FillRectangle(b, r);
+                using (Pen wp = new Pen(Color.White, Math.Max(3f, Ui.Px(2.6f)))) { g.DrawLine(wp, w / 2, 0, w / 2, h); g.DrawLine(wp, 0, h / 2, w, h / 2); }
+                using (Pen rp = new Pen(Color.FromArgb(200, 16, 46), Math.Max(2f, Ui.Px(1.6f)))) { g.DrawLine(rp, w / 2, 0, w / 2, h); g.DrawLine(rp, 0, h / 2, w, h / 2); }
+                using (Pen wp2 = new Pen(Color.FromArgb(210, 255, 255, 255), Math.Max(1f, Ui.Px(0.9f)))) { g.DrawLine(wp2, 0, 0, w, h); g.DrawLine(wp2, 0, h, w, 0); }
+            }
+            using (Pen pen = new Pen(Color.FromArgb(90, 0, 0, 0))) g.DrawRectangle(pen, 0, 0, w - 1, h - 1);
+        }
+        return bmp;
     }
 }
