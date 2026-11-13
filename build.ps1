@@ -6,12 +6,16 @@
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $src  = Join-Path $root 'MacBookToolkit.cs'
+$ui   = Join-Path $root 'ThemeUi.cs'
 $asm  = Join-Path $root 'AssemblyInfo.cs'
 $ico  = Join-Path $root 'app.ico'
+$man  = Join-Path $root 'app.manifest'
 $out  = Join-Path $root 'MacBookToolkit.exe'
 
 if (-not (Test-Path $src)) { throw "Source not found: $src" }
+if (-not (Test-Path $ui)) { throw "Theme source not found: $ui" }
 if (-not (Test-Path $asm)) { throw "Assembly info not found: $asm" }
+if (-not (Test-Path $man)) { throw "Manifest not found: $man" }
 
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
@@ -21,12 +25,14 @@ $args = @(
     '/nologo',
     '/target:winexe',
     ('/win32icon:' + $ico),
+    ('/win32manifest:' + $man),
     ('/out:' + $out),
     '/reference:System.dll',
     '/reference:System.Windows.Forms.dll',
     '/reference:System.Drawing.dll',
     '/reference:System.Management.dll',
     $src,
+    $ui,
     $asm
 )
 

@@ -23,11 +23,9 @@
 
 ### 📸 Screenshots
 
-| 🔆 Screen | 🖱️ Touchpad |
+| Light | Dark |
 |---|---|
-| ![Screen tab](screenshots/en-screen.png) | ![Touchpad tab](screenshots/en-touchpad.png) |
-| ⌨️ Keyboard | 🔋 Power |
-| ![Keyboard tab](screenshots/en-keyboard.png) | ![Power tab](screenshots/en-power.png) |
+| ![Light theme](screenshots/en-light.png) | ![Dark theme](screenshots/en-dark.png) |
 
 ### ✨ Features
 
@@ -96,6 +94,32 @@ A single button restores the settings this project was tuned for:
 | ⌨️ Key debounce | 70 ms after release / 25 ms between presses |
 | 🔋 Screen timeout | 2 min |
 
+#### 🎨 Windows light / dark theme and accent colour
+The window follows the **Windows app theme** (light or dark) and the **system
+accent colour**, automatically updating when you change them in Windows. A theme
+selector lets you pin Light or Dark instead of following the system.
+
+#### 📌 Always on top
+A single checkbox keeps the window above other applications.
+
+#### 🖱️ Tray: one click to open, right-click for the menu
+A left click on the tray icon opens the window (double click works too). The
+right-click menu has **Open**, **Always on top**, **Autostart** and **Exit**.
+
+#### 🧩 Compact, DPI-aware layout
+Everything fits a small window (456 × 472 logical px) with no tabs. The app is
+DPI-aware and scales correctly at 100–200 % scaling and any screen resolution.
+
+#### 🔄 Startup recalibration
+Every launch re-applies all device changes: normal brightness (fixes a screen
+stuck at a dim level), the screen-off timeout, autostart and always-on-top —
+then the normal idle logic resumes.
+
+#### 🛡️ Single instance with hung-process recovery
+Starting the app again activates the running window instead of creating a second
+process. If the first instance is not responding, the second asks whether to
+terminate it and start fresh.
+
 ### 📦 Requirements
 - Windows 7 / 8 / 10 / 11 (x86 or x64)
 - .NET Framework 4.x (preinstalled on Windows 10/11)
@@ -117,13 +141,14 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 Or manually:
 
 ```bat
-csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
+csc /nologo /target:winexe /win32icon:app.ico ^
+    /win32manifest:app.manifest /out:MacBookToolkit.exe ^
     /reference:System.dll /reference:System.Windows.Forms.dll ^
     /reference:System.Drawing.dll /reference:System.Management.dll ^
-    MacBookToolkit.cs AssemblyInfo.cs
+    MacBookToolkit.cs ThemeUi.cs AssemblyInfo.cs
 ```
 
-The result is a single portable `MacBookToolkit.exe` (~58 KB, version 1.1). No
+The result is a single portable `MacBookToolkit.exe` (~87 KB, version 1.2). No
 installer, no dependencies — copy it anywhere and run it.
 
 Logic tests (no hardware needed):
@@ -134,7 +159,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 
 ### 🚀 Usage
 1. Run `MacBookToolkit.exe`.
-2. Configure the tabs, press **Save & apply**.
+2. Adjust the settings and press **Save**.
 3. Close the window to send it to the tray (or turn the tray icon off).
 4. Settings live in `%APPDATA%\MacBookToolkit\settings.ini`.
 
@@ -146,8 +171,26 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
   `root\wmi:WmiMonitorBrightnessMethods`.
 - **Idle detection** uses `GetLastInputInfo`.
 - **Screen timeout** is applied with `powercfg`.
+- **Theming**: the app reads `AppsUseLightTheme` and `DwmGetColorizationColor`
+  (accent), redraws itself on `WM_SETTINGCHANGE` / `WM_DWMCOLORIZATIONCOLORCHANGED`,
+  and scales its custom controls from `GetDpiForSystem()`.
 
 ### 🆕 Changelog
+
+**v1.2**
+- New: follows the **Windows light/dark theme** and the **system accent colour**
+  (System / Light / Dark selector) with a fully themed custom title bar.
+- New: **Always on top** toggle — in the window and in the tray menu.
+- New: tray icon opens the window on a **single click**; right-click menu with
+  Open, Always on top, Autostart and Exit.
+- New: **compact single-page layout** (456 × 472 logical px) instead of tabs, and
+  proper **DPI awareness** via an application manifest — crisp at 100–200 %.
+- New: **startup recalibration** — brightness, screen timeout, autostart and
+  always-on-top are re-applied on every launch (fixes a screen stuck at a dim
+  level).
+- New: **single-instance activation** — a second launch restores the running
+  window; if the first instance is hung, it offers to terminate it and restart.
+- Tests: **85 logic tests**.
 
 **v1.1**
 - Fixed: dimming flickered when the idle timeout was set to 1 s (the restore
@@ -199,11 +242,9 @@ Keyboard and mouse hooks affect system-wide input. The program is provided
 
 ### 📸 Скриншоты
 
-| 🔆 Экран | 🖱️ Тачпад |
+| Светлая | Тёмная |
 |---|---|
-| ![Вкладка «Экран»](screenshots/ru-screen.png) | ![Вкладка «Тачпад»](screenshots/ru-touchpad.png) |
-| ⌨️ Клавиатура | 🔋 Питание |
-| ![Вкладка «Клавиатура»](screenshots/ru-keyboard.png) | ![Вкладка «Питание»](screenshots/ru-power.png) |
+| ![Светлая тема](screenshots/ru-light.png) | ![Тёмная тема](screenshots/ru-dark.png) |
 
 ### ✨ Возможности
 
@@ -272,6 +313,32 @@ Keyboard and mouse hooks affect system-wide input. The program is provided
 | ⌨️ Дебаунс клавиш | 70 мс после отпускания / 25 мс между нажатиями |
 | 🔋 Таймаут экрана | 2 мин |
 
+#### 🎨 Светлая и тёмная тема Windows + акцент
+Окно следует **теме приложений Windows** (светлая или тёмная) и **акцентному
+цвету системы**, автоматически обновляясь при их смене. Селектор темы позволяет
+зафиксировать светлую или тёмную вместо следования за системой.
+
+#### 📌 Поверх всех окон
+Одна галочка держит окно поверх остальных приложений.
+
+#### 🖱️ Трей: один клик — открыть, правый клик — меню
+Левый клик по иконке в трее открывает окно (двойной тоже работает). В меню по
+правому клику: **Открыть**, **Поверх всех окон**, **Автозагрузка**, **Выход**.
+
+#### 🧩 Компактный DPI-макет
+Всё помещается в небольшое окно (456 × 472 логических px), без вкладок.
+Приложение DPI-aware и корректно масштабируется при 100–200 % и любом
+разрешении экрана.
+
+#### 🔄 Перекалибровка при запуске
+Каждый запуск заново применяет всё, что программа меняет на устройстве: обычную
+яркость (чинит экран, «застрявший» на минимуме), таймаут экрана, автозапуск и
+«поверх всех окон» — после чего снова работает обычная логика простоя.
+
+#### 🛡️ Один экземпляр и восстановление после зависания
+Повторный запуск активирует уже открытое окно, а не создаёт второй процесс. Если
+первый экземпляр не отвечает, второй предлагает завершить его и запуститься заново.
+
 ### 📦 Требования
 - Windows 7 / 8 / 10 / 11 (x86 или x64)
 - .NET Framework 4.x (предустановлен на Windows 10/11)
@@ -293,13 +360,14 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 Или вручную:
 
 ```bat
-csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
+csc /nologo /target:winexe /win32icon:app.ico ^
+    /win32manifest:app.manifest /out:MacBookToolkit.exe ^
     /reference:System.dll /reference:System.Windows.Forms.dll ^
     /reference:System.Drawing.dll /reference:System.Management.dll ^
-    MacBookToolkit.cs AssemblyInfo.cs
+    MacBookToolkit.cs ThemeUi.cs AssemblyInfo.cs
 ```
 
-На выходе — один портативный `MacBookToolkit.exe` (~58 КБ, версия 1.1). Без
+На выходе — один портативный `MacBookToolkit.exe` (~87 КБ, версия 1.2). Без
 установщика и зависимостей: скопируйте в любое место и запустите.
 
 Логические тесты (железо не нужно):
@@ -310,7 +378,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 
 ### 🚀 Использование
 1. Запустите `MacBookToolkit.exe`.
-2. Настройте вкладки и нажмите **«Сохранить и применить»**.
+2. Настройте параметры и нажмите **«Сохранить»**.
 3. Закройте окно — программа уйдёт в трей (или отключите иконку в трее).
 4. Настройки хранятся в `%APPDATA%\MacBookToolkit\settings.ini`.
 
@@ -325,6 +393,23 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 - **Таймаут экрана** применяется командой `powercfg`.
 
 ### 🆕 Changelog
+
+**v1.2**
+- Новое: поддержка **светлой/тёмной темы Windows** и **акцентного цвета системы**
+  (селектор «Как в Windows» / «Светлая» / «Тёмная»), собственный заголовок окна в
+  цветах темы.
+- Новое: галочка **«Поверх всех окон»** — в окне и в меню трея.
+- Новое: иконка в трее открывает окно по **одному клику**; меню по правому клику:
+  Открыть, Поверх всех окон, Автозагрузка, Выход.
+- Новое: **компактный одностраничный макет** (456 × 472 логических px) вместо
+  вкладок и корректная работа с **DPI** через манифест — чётко при 100–200 %.
+- Новое: **перекалибровка при запуске** — яркость, таймаут экрана, автозапуск и
+  «поверх всех окон» применяются заново при каждом старте (лечит экран,
+  «застрявший» на минимуме).
+- Новое: **активация одного экземпляра** — повторный запуск восстанавливает
+  открытое окно; если первый экземпляр завис, предлагается завершить его и
+  запуститься заново.
+- Тесты: **85 логических тестов**.
 
 **v1.1**
 - Исправлено: затемнение мерцало, если простой до затемнения был выставлен в 1 с

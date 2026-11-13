@@ -1,12 +1,13 @@
 ﻿using System;
-using System.Drawing;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
-using System.Management;
-using System.IO;
 using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Management;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 using Microsoft.Win32;
 
 public class Settings
@@ -23,9 +24,12 @@ public class Settings
     public int ScreenOffMin = 2;
     public bool AutoStart = true;
     public bool ShowTray = true;
+    public bool TopMost = false;
     public string Lang = "ru";
+    public string Theme = "system";
 
-    // set by Load() for diagnostics; not persisted
+    public const int MaxDebounceDownMs = 30;
+
     public bool Existed = false;
     public bool ParseFailed = false;
 
@@ -33,12 +37,11 @@ public class Settings
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MacBookToolkit");
     }
+
     public static string FilePath()
     {
         return Path.Combine(Dir(), "settings.ini");
     }
-
-    public const int MaxDebounceDownMs = 30;
 
     public static Settings Load()
     {
@@ -84,7 +87,9 @@ public class Settings
                 case "ScreenOffMin": if (int.TryParse(v, out i)) s.ScreenOffMin = i; break;
                 case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
                 case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
+                case "TopMost": if (bool.TryParse(v, out b)) s.TopMost = b; break;
                 case "Lang": s.Lang = v; break;
+                case "Theme": s.Theme = v; break;
             }
         }
         s.Normalize();
@@ -107,6 +112,7 @@ public class Settings
         ScreenOffMin = ClampInt(ScreenOffMin, 1, 60);
         if (DimPct > NormalPct) DimPct = NormalPct;
         if (Lang != "ru" && Lang != "uk" && Lang != "en") Lang = "ru";
+        if (Theme != "system" && Theme != "light" && Theme != "dark") Theme = "system";
     }
 
     public void Save()
@@ -127,7 +133,9 @@ public class Settings
             sb.AppendLine("ScreenOffMin=" + ScreenOffMin.ToString());
             sb.AppendLine("AutoStart=" + AutoStart.ToString());
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
+            sb.AppendLine("TopMost=" + TopMost.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
+            sb.AppendLine("Theme=" + Theme.ToString());
             string fp = FilePath();
             string tmp = fp + ".tmp";
             File.WriteAllText(tmp, sb.ToString());
@@ -135,141 +143,6 @@ public class Settings
             else File.Move(tmp, fp);
         }
         catch (Exception ex) { Program.LogError("settings save", ex); }
-    }
-}
-
-public static class L10n
-{
-    public static string Lang = "ru";
-
-    static Dictionary<string, string> ru = new Dictionary<string, string>()
-    {
-        {"tab_screen","Экран"}, {"tab_touch","Тачпад"}, {"tab_key","Клавиатура"}, {"tab_power","Питание"},
-        {"chk_screen","Затемнять экран при простое"},
-        {"lbl_idle","Простой до затемнения (сек):"},
-        {"lbl_dim","Яркость затемнения (%):"},
-        {"lbl_normal","Яркость при активности (%):"},
-        {"chk_touch","Не реагировать на тачпад во время печати"},
-        {"lbl_block","Блокировка после нажатия клавиши (мс):"},
-        {"chk_key","Подавлять дребезг клавиш (дубли букв)"},
-        {"lbl_up","Окно после отпускания (мс):"},
-        {"lbl_down","Окно между нажатиями (мс):"},
-        {"lbl_screenoff","Отключать экран через (мин):"},
-        {"chk_autostart","Запускать при входе в Windows"},
-        {"chk_tray","Показывать иконку в трее"},
-        {"btn_save","Сохранить и применить"},
-        {"btn_reset","Сброс к умолчанию"},
-        {"lbl_lang","Язык:"},
-        {"reset_title","Сброс к умолчанию"},
-        {"reset_confirm","Вернуть все настройки (кроме языка) к подобранным значениям?\n\nЭкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавиатура: 70 / 25 мс\nПитание: экран через 2 мин"},
-        {"reset_done","Готово — настройки сброшены к умолчанию."},
-        {"tray_show","Показать"}, {"tray_exit","Выход"},
-        {"tray_min","Свернуто в трей. Настройки работают."},
-        {"already_running","MacBookToolkit уже запущен — иконка в трее."},
-        {"tip_chk_screen","Когда вы не трогаете мышь/клавиатуру заданное время, яркость экрана снижается. При активности возвращается обычная яркость."},
-        {"tip_idle","Через сколько секунд бездействия включать затемнение. Минимум 1 сек."},
-        {"tip_dim","До какой яркости (в %) затемнять экран. 10% — очень тускло, но читаемо."},
-        {"tip_normal","Яркость при активности. 100% — максимум."},
-        {"tip_chk_touch","Пока вы печатаете, тачпад не двигает курсор. Защищает от случайных касаний ладонью."},
-        {"tip_block","Сколько миллисекунд после последнего нажатия клавиши тачпад игнорирует касания."},
-        {"tip_chk_key","Убирает «дребезг» butterfly-клавиатуры — когда одна клавиша срабатывает дважды."},
-        {"tip_up","Повторное нажатие той же клавиши быстрее этого времени считается дребезгом и отбрасывается."},
-        {"tip_down","Окно между двумя нажатиями одной клавиши без отпускания. Не ставьте больше 30 мс — иначе при удержании клавиши перестанет работать авто-повтор."},
-        {"tip_screenoff","Через сколько минут простоя Windows выключает экран."},
-        {"tip_autostart","Запускать программу автоматически при входе в Windows."},
-        {"tip_tray","Показывать иконку программы в системном трее (рядом с часами)."},
-        {"tip_save","Сохранить настройки и применить их сразу."},
-        {"tip_reset","Вернуть ВСЕ настройки к подобранным значениям по умолчанию."}
-    };
-
-    static Dictionary<string, string> uk = new Dictionary<string, string>()
-    {
-        {"tab_screen","Екран"}, {"tab_touch","Тачпад"}, {"tab_key","Клавіатура"}, {"tab_power","Живлення"},
-        {"chk_screen","Затемнювати екран при простої"},
-        {"lbl_idle","Простій до затемнення (сек):"},
-        {"lbl_dim","Яскравість затемнення (%):"},
-        {"lbl_normal","Яскравість при активності (%):"},
-        {"chk_touch","Не реагувати на тачпад під час друку"},
-        {"lbl_block","Блокування після натискання клавіші (мс):"},
-        {"chk_key","Придушувати брязкіт клавіш (дублі літер)"},
-        {"lbl_up","Вікно після відпускання (мс):"},
-        {"lbl_down","Вікно між натисканнями (мс):"},
-        {"lbl_screenoff","Вимикати екран через (хв):"},
-        {"chk_autostart","Запускати при вході у Windows"},
-        {"chk_tray","Показувати іконку в треї"},
-        {"btn_save","Зберегти та застосувати"},
-        {"btn_reset","Скидання до стандартних"},
-        {"lbl_lang","Мова:"},
-        {"reset_title","Скидання"},
-        {"reset_confirm","Повернути всі налаштування (крім мови) до підібраних значень?\n\nЕкран: 15 с / 10% / 100%\nТачпад: 700 мс\nКлавіатура: 70 / 25 мс\nЖивлення: екран через 2 хв"},
-        {"reset_done","Готово — налаштування скинуті до стандартних."},
-        {"tray_show","Показати"}, {"tray_exit","Вихід"},
-        {"tray_min","Згорнуто в трей. Налаштування працюють."},
-        {"already_running","MacBookToolkit вже запущено — іконка в треї."},
-        {"tip_chk_screen","Коли ви не торкаєтесь миші/клавіатури заданий час, яскравість екрана знижується. При активності повертається звичайна."},
-        {"tip_idle","Через скільки секунд простою вмикати затемнення. Мінімум 1 сек."},
-        {"tip_dim","До якої яскравості (у %) затемнювати екран. 10% — дуже тьмяно, але читабельно."},
-        {"tip_normal","Яскравість при активності. 100% — максимум."},
-        {"tip_chk_touch","Поки ви друкуєте, тачпад не рухає курсор. Захищає від випадкових торкань долонею."},
-        {"tip_block","Скільки мілісекунд після останнього натискання клавіші тачпад ігнорує торкання."},
-        {"tip_chk_key","Прибирає «брязкіт» butterfly-клавіатури — коли одна клавіша спрацьовує двічі."},
-        {"tip_up","Повторне натискання тієї ж клавіші швидше цього часу вважається брязкотом і відкидається."},
-        {"tip_down","Вікно між двома натисканнями однієї клавіші без відпускання. Не ставте більше 30 мс — інакше під час утримання клавіші перестане працювати автоповтор."},
-        {"tip_screenoff","Через скільки хвилин простою Windows вимикає екран."},
-        {"tip_autostart","Запускати програму автоматично при вході у Windows."},
-        {"tip_tray","Показувати іконку програми в системному треї (біля годинника)."},
-        {"tip_save","Зберегти налаштування та застосувати їх одразу."},
-        {"tip_reset","Повернути ВСІ налаштування до підібраних значень за замовчуванням."}
-    };
-
-    static Dictionary<string, string> en = new Dictionary<string, string>()
-    {
-        {"tab_screen","Screen"}, {"tab_touch","Touchpad"}, {"tab_key","Keyboard"}, {"tab_power","Power"},
-        {"chk_screen","Dim screen when idle"},
-        {"lbl_idle","Idle before dimming (sec):"},
-        {"lbl_dim","Dim brightness (%):"},
-        {"lbl_normal","Active brightness (%):"},
-        {"chk_touch","Ignore touchpad while typing"},
-        {"lbl_block","Block after keypress (ms):"},
-        {"chk_key","Suppress key chatter (double letters)"},
-        {"lbl_up","Window after release (ms):"},
-        {"lbl_down","Window between presses (ms):"},
-        {"lbl_screenoff","Turn off screen after (min):"},
-        {"chk_autostart","Launch at Windows startup"},
-        {"chk_tray","Show tray icon"},
-        {"btn_save","Save & apply"},
-        {"btn_reset","Reset to defaults"},
-        {"lbl_lang","Language:"},
-        {"reset_title","Reset to defaults"},
-        {"reset_confirm","Restore all settings (language is kept) to the tuned values?\n\nScreen: 15 s / 10% / 100%\nTouchpad: 700 ms\nKeyboard: 70 / 25 ms\nPower: screen off in 2 min"},
-        {"reset_done","Done — settings restored to defaults."},
-        {"tray_show","Show"}, {"tray_exit","Exit"},
-        {"tray_min","Minimized to tray. Settings are running."},
-        {"already_running","MacBookToolkit is already running — look for its tray icon."},
-        {"tip_chk_screen","When you do not touch the mouse/keyboard for the set time, screen brightness is reduced. It restores on activity."},
-        {"tip_idle","Seconds of inactivity before dimming starts. Minimum 1 s."},
-        {"tip_dim","Brightness (%) to dim to. 10% is very dim but readable."},
-        {"tip_normal","Brightness (%) when active. 100% is maximum."},
-        {"tip_chk_touch","While typing, the touchpad will not move the cursor. Protects from accidental palm touches."},
-        {"tip_block","Milliseconds after the last keypress during which the touchpad ignores touches."},
-        {"tip_chk_key","Removes butterfly-keyboard chatter (a key firing twice)."},
-        {"tip_up","A repeat press of the same key within this time is treated as chatter and dropped."},
-        {"tip_down","Window between two presses of one key without release. Do not exceed 30 ms — otherwise holding a key stops auto-repeating."},
-        {"tip_screenoff","Minutes of inactivity before Windows turns the screen off."},
-        {"tip_autostart","Start the app automatically at Windows login."},
-        {"tip_tray","Show the app icon in the system tray (near the clock)."},
-        {"tip_save","Save settings and apply them immediately."},
-        {"tip_reset","Restore ALL settings to the tuned defaults."}
-    };
-
-    public static string T(string key)
-    {
-        Dictionary<string, string> d = ru;
-        if (Lang == "en") d = en;
-        else if (Lang == "uk") d = uk;
-        string v;
-        if (d.TryGetValue(key, out v)) return v;
-        return key;
     }
 }
 
@@ -299,6 +172,141 @@ public class KeyDebouncer
     }
 }
 
+public static class L10n
+{
+    public static string Lang = "ru";
+
+    static Dictionary<string, string> ru = new Dictionary<string, string>()
+    {
+        {"sec_screen","Экран"}, {"sec_touch","Тачпад"}, {"sec_key","Клавиатура"}, {"sec_power","Питание"},
+        {"sec_window","Окно и система"},
+        {"chk_screen","Затемнять при простое"},
+        {"lbl_idle","Простой, с"}, {"lbl_dim","Тускло, %"}, {"lbl_normal","Ярко, %"},
+        {"chk_touch","Блокировать при печати"}, {"lbl_block","Блок, мс"},
+        {"chk_key","Убирать дребезг клавиш"}, {"lbl_up","Отпуск, мс"}, {"lbl_down","Между, мс"},
+        {"lbl_screenoff","Экран, мин"},
+        {"chk_topmost","Поверх всех окон"},
+        {"lbl_theme","Тема"}, {"theme_system","Как в Windows"}, {"theme_light","Светлая"}, {"theme_dark","Тёмная"},
+        {"chk_autostart","Автозапуск"}, {"chk_tray","Иконка в трее"}, {"lbl_lang","Язык"},
+        {"btn_save","Сохранить"}, {"btn_reset","Сброс"},
+        {"reset_title","Сброс"},
+        {"reset_confirm","Вернуть все настройки (кроме языка и темы) к подобранным значениям?\n\nЭкран: 15 с / 10 % / 100 %\nТачпад: 700 мс\nКлавиатура: 70 / 25 мс\nПитание: экран через 2 мин"},
+        {"reset_done","Готово — настройки сброшены к умолчанию."},
+        {"tray_show","Открыть"}, {"tray_topmost","Поверх всех окон"}, {"tray_autostart","Автозагрузка"}, {"tray_exit","Выход"},
+        {"tray_min","Свёрнуто в трей. Настройки работают."},
+        {"already_running","MacBookToolkit уже запущен — окно восстановлено."},
+        {"hung_title","Приложение не отвечает"},
+        {"hung_body","Основной экземпляр MacBookToolkit не отвечает.\n\nЗавершить его и запустить заново?"},
+        {"tip_chk_screen","Когда вы не трогаете мышь/клавиатуру заданное время, яркость экрана снижается. При активности возвращается обычная яркость."},
+        {"tip_idle","Через сколько секунд бездействия включать затемнение. Минимум 1 сек."},
+        {"tip_dim","До какой яркости (в %) затемнять экран. 10 % — очень тускло, но читаемо."},
+        {"tip_normal","Яркость при активности. 100 % — максимум."},
+        {"tip_chk_touch","Пока вы печатаете, тачпад не двигает курсор. Защищает от случайных касаний ладонью."},
+        {"tip_block","Сколько миллисекунд после последнего нажатия клавиши тачпад игнорирует касания и клики."},
+        {"tip_chk_key","Убирает «дребезг» butterfly-клавиатуры — когда одна клавиша срабатывает дважды."},
+        {"tip_up","Повторное нажатие той же клавиши быстрее этого времени считается дребезгом и отбрасывается."},
+        {"tip_down","Окно между двумя нажатиями одной клавиши без отпускания. Не ставьте больше 30 мс — иначе перестанет работать авто-повтор."},
+        {"tip_screenoff","Через сколько минут простоя Windows выключает экран."},
+        {"tip_topmost","Окно программы всегда будет поверх остальных окон."},
+        {"tip_theme","Оформление: следовать теме Windows, светлая или тёмная. Акцентный цвет берётся из системы."},
+        {"tip_autostart","Запускать программу автоматически при входе в Windows."},
+        {"tip_tray","Показывать иконку программы в системном трее. Клик — открыть, правый клик — меню."},
+        {"tip_lang","Язык интерфейса."},
+        {"tip_save","Сохранить настройки и применить их сразу."},
+        {"tip_reset","Вернуть все настройки к подобранным значениям по умолчанию."}
+    };
+
+    static Dictionary<string, string> uk = new Dictionary<string, string>()
+    {
+        {"sec_screen","Екран"}, {"sec_touch","Тачпад"}, {"sec_key","Клавіатура"}, {"sec_power","Живлення"},
+        {"sec_window","Вікно і система"},
+        {"chk_screen","Затемнювати при простої"},
+        {"lbl_idle","Простій, с"}, {"lbl_dim","Тьмяно, %"}, {"lbl_normal","Яскраво, %"},
+        {"chk_touch","Блокувати під час друку"}, {"lbl_block","Блок, мс"},
+        {"chk_key","Прибирати брязкіт клавіш"}, {"lbl_up","Відпуск, мс"}, {"lbl_down","Між, мс"},
+        {"lbl_screenoff","Екран, хв"},
+        {"chk_topmost","Поверх усіх вікон"},
+        {"lbl_theme","Тема"}, {"theme_system","Як у Windows"}, {"theme_light","Світла"}, {"theme_dark","Темна"},
+        {"chk_autostart","Автозапуск"}, {"chk_tray","Іконка в треї"}, {"lbl_lang","Мова"},
+        {"btn_save","Зберегти"}, {"btn_reset","Скинути"},
+        {"reset_title","Скидання"},
+        {"reset_confirm","Повернути всі налаштування (крім мови та теми) до підібраних значень?\n\nЕкран: 15 с / 10 % / 100 %\nТачпад: 700 мс\nКлавіатура: 70 / 25 мс\nЖивлення: екран через 2 хв"},
+        {"reset_done","Готово — налаштування скинуті до стандартних."},
+        {"tray_show","Відкрити"}, {"tray_topmost","Поверх усіх вікон"}, {"tray_autostart","Автозапуск"}, {"tray_exit","Вихід"},
+        {"tray_min","Згорнуто в трей. Налаштування працюють."},
+        {"already_running","MacBookToolkit вже запущено — вікно відновлено."},
+        {"hung_title","Програма не відповідає"},
+        {"hung_body","Основний екземпляр MacBookToolkit не відповідає.\n\nЗавершити його та запустити заново?"},
+        {"tip_chk_screen","Коли ви не торкаєтесь миші/клавіатури заданий час, яскравість екрана знижується. При активності повертається звичайна."},
+        {"tip_idle","Через скільки секунд простою вмикати затемнення. Мінімум 1 сек."},
+        {"tip_dim","До якої яскравості (у %) затемнювати екран. 10 % — дуже тьмяно, але читабельно."},
+        {"tip_normal","Яскравість при активності. 100 % — максимум."},
+        {"tip_chk_touch","Поки ви друкуєте, тачпад не рухає курсор. Захищає від випадкових торкань долонею."},
+        {"tip_block","Скільки мілісекунд після останнього натискання клавіші тачпад ігнорує торкання та кліки."},
+        {"tip_chk_key","Прибирає «брязкіт» butterfly-клавіатури — коли одна клавіша спрацьовує двічі."},
+        {"tip_up","Повторне натискання тієї ж клавіші швидше цього часу вважається брязкотом і відкидається."},
+        {"tip_down","Вікно між двома натисканнями однієї клавіші без відпускання. Не ставте більше 30 мс — інакше перестане працювати автоповтор."},
+        {"tip_screenoff","Через скільки хвилин простою Windows вимикає екран."},
+        {"tip_topmost","Вікно програми завжди буде поверх інших вікон."},
+        {"tip_theme","Оформлення: слідувати темі Windows, світла або темна. Акцентний колір береться з системи."},
+        {"tip_autostart","Запускати програму автоматично при вході у Windows."},
+        {"tip_tray","Показувати іконку програми в системному треї. Клік — відкрити, правий клік — меню."},
+        {"tip_lang","Мова інтерфейсу."},
+        {"tip_save","Зберегти налаштування та застосувати їх одразу."},
+        {"tip_reset","Повернути всі налаштування до підібраних значень за замовчуванням."}
+    };
+
+    static Dictionary<string, string> en = new Dictionary<string, string>()
+    {
+        {"sec_screen","Screen"}, {"sec_touch","Touchpad"}, {"sec_key","Keyboard"}, {"sec_power","Power"},
+        {"sec_window","Window & system"},
+        {"chk_screen","Dim when idle"},
+        {"lbl_idle","Idle, s"}, {"lbl_dim","Dim, %"}, {"lbl_normal","Bright, %"},
+        {"chk_touch","Block while typing"}, {"lbl_block","Block, ms"},
+        {"chk_key","Suppress key chatter"}, {"lbl_up","Release, ms"}, {"lbl_down","Between, ms"},
+        {"lbl_screenoff","Screen, min"},
+        {"chk_topmost","Always on top"},
+        {"lbl_theme","Theme"}, {"theme_system","Follow Windows"}, {"theme_light","Light"}, {"theme_dark","Dark"},
+        {"chk_autostart","Autostart"}, {"chk_tray","Tray icon"}, {"lbl_lang","Lang"},
+        {"btn_save","Save"}, {"btn_reset","Reset"},
+        {"reset_title","Reset to defaults"},
+        {"reset_confirm","Restore all settings (language and theme are kept) to the tuned values?\n\nScreen: 15 s / 10 % / 100 %\nTouchpad: 700 ms\nKeyboard: 70 / 25 ms\nPower: screen off in 2 min"},
+        {"reset_done","Done — settings restored to defaults."},
+        {"tray_show","Open"}, {"tray_topmost","Always on top"}, {"tray_autostart","Autostart"}, {"tray_exit","Exit"},
+        {"tray_min","Minimized to tray. Settings are running."},
+        {"already_running","MacBookToolkit is already running — window restored."},
+        {"hung_title","Application is not responding"},
+        {"hung_body","The main MacBookToolkit instance is not responding.\n\nTerminate it and start again?"},
+        {"tip_chk_screen","When you do not touch the mouse/keyboard for the set time, screen brightness is reduced. It restores on activity."},
+        {"tip_idle","Seconds of inactivity before dimming starts. Minimum 1 s."},
+        {"tip_dim","Brightness (%) to dim to. 10 % is very dim but readable."},
+        {"tip_normal","Brightness (%) when active. 100 % is maximum."},
+        {"tip_chk_touch","While typing, the touchpad will not move the cursor. Protects from accidental palm touches."},
+        {"tip_block","Milliseconds after the last keypress during which the touchpad ignores touches and clicks."},
+        {"tip_chk_key","Removes butterfly-keyboard chatter (a key firing twice)."},
+        {"tip_up","A repeat press of the same key within this time is treated as chatter and dropped."},
+        {"tip_down","Window between two presses of one key without release. Do not exceed 30 ms — otherwise auto-repeat stops."},
+        {"tip_screenoff","Minutes of inactivity before Windows turns the screen off."},
+        {"tip_topmost","Keep the program window above all other windows."},
+        {"tip_theme","Appearance: follow Windows, light or dark. The accent colour is taken from the system."},
+        {"tip_autostart","Start the app automatically at Windows login."},
+        {"tip_tray","Show the app icon in the system tray. Click to open, right-click for the menu."},
+        {"tip_lang","Interface language."},
+        {"tip_save","Save settings and apply them immediately."},
+        {"tip_reset","Restore all settings to the tuned defaults."}
+    };
+
+    public static string T(string key)
+    {
+        Dictionary<string, string> d = ru;
+        if (Lang == "en") d = en;
+        else if (Lang == "uk") d = uk;
+        string v;
+        if (d.TryGetValue(key, out v)) return v;
+        return key;
+    }
+}
+
 public class MainForm : Form
 {
     delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -312,6 +320,10 @@ public class MainForm : Form
     static extern IntPtr GetModuleHandle(string lpModuleName);
     [DllImport("user32.dll")]
     static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+    [DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("user32.dll")]
+    static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
@@ -346,242 +358,360 @@ public class MainForm : Form
     static bool _brightnessErrorLogged = false;
     static bool _systemApplied = false;
 
-    TabControl tabs;
-    CheckBox chkScreen;
-    NumericUpDown numIdle;
-    NumericUpDown numDim;
-    NumericUpDown numNormal;
-    CheckBox chkTouch;
-    NumericUpDown numBlock;
-    CheckBox chkKey;
-    NumericUpDown numUp;
-    NumericUpDown numDown;
-    NumericUpDown numScreenOff;
-    CheckBox chkAutoStart;
-    CheckBox chkTray;
-    ComboBox cbLang;
-    Label lblLang;
-    Label lblIdle;
-    Label lblDim;
-    Label lblNormal;
-    Label lblBlock;
-    Label lblUp;
-    Label lblDown;
-    Label lblScreenOff;
-    Button btnSave;
-    Button btnReset;
-    NotifyIcon tray;
+    ThemeColors _theme;
+    Dictionary<Control, string> _textKeys = new Dictionary<Control, string>();
+    Dictionary<Control, string> _tipKeys = new Dictionary<Control, string>();
     ToolTip tip;
-    MenuItem miShow;
-    MenuItem miExit;
-    Timer idleTimer;
+
+    ThemedCard cardScreen, cardKey, cardTouch, cardPower, cardWindow;
+    ThemedCaption caption;
+    ThemedLabel lblIdle, lblDim, lblNormal;
+    ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblLang;
+    ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray;
+    ThemedSpinner numIdle, numDim, numNormal, numBlock, numUp, numDown, numScreenOff;
+    ThemedSelect cbLang, cbTheme;
+    ThemedButton btnSave, btnReset;
+    NotifyIcon tray;
+    MenuItem miShow, miTopMost, miAutoStart, miExit;
+    System.Windows.Forms.Timer idleTimer;
     bool _loading = false;
+    bool _brightnessOk = false;
+    int _brightnessTries = 0;
 
     public MainForm()
     {
         _s = Settings.Load();
         L10n.Lang = _s.Lang;
+        AutoScaleMode = AutoScaleMode.None;
+        Font = new Font("Segoe UI", 9f);
         BuildUi();
         ApplyLanguage();
+        ApplyThemeNow();
+        ApplyTopMost(_s.TopMost, false);
         InstallHooks();
-        idleTimer = new Timer();
+        idleTimer = new System.Windows.Forms.Timer();
         idleTimer.Interval = 500;
         idleTimer.Tick += IdleTick;
         idleTimer.Start();
-        if (!_s.ParseFailed) SetBrightness(_s.ScreenEnabled ? _s.NormalPct : -1);
     }
 
-    Label AddLabel(string key, int y, Control parent)
+    // ---------- UI building ----------
+    void Add(Control parent, Control child)
     {
-        Label l = new Label();
+        parent.Controls.Add(child);
+    }
+
+    ThemedCard Card(string key, double x, double y, double w, double h)
+    {
+        ThemedCard c = new ThemedCard();
+        c.TitleKey = key;
+        c.Title = L10n.T(key);
+        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
+        _textKeys[c] = key;
+        Controls.Add(c);
+        return c;
+    }
+
+    ThemedLabel Lbl(string key, double x, double y, double w, double h, Control parent, bool muted, bool bold)
+    {
+        ThemedLabel l = new ThemedLabel();
+        l.Muted = muted;
+        l.Bold = bold;
         l.Text = L10n.T(key);
-        l.Location = new Point(40, y);
-        l.AutoSize = true;
-        parent.Controls.Add(l);
+        l.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
+        l.TextAlign = ContentAlignment.MiddleLeft;
+        _textKeys[l] = key;
+        Add(parent, l);
         return l;
     }
 
-    NumericUpDown AddNum(int y, int min, int max, int step, int val, Control parent)
+    ThemedCheckBox Chk(string key, double x, double y, double w, Control parent, bool val)
     {
-        NumericUpDown n = new NumericUpDown();
-        n.Minimum = min;
-        n.Maximum = max;
-        n.Increment = step;
-        n.Value = Math.Max(min, Math.Min(max, val));
-        n.Width = 80;
-        n.Location = new Point(360, y - 3);
-        parent.Controls.Add(n);
-        return n;
+        ThemedCheckBox c = new ThemedCheckBox();
+        c.Text = L10n.T(key);
+        c.Checked = val;
+        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(22));
+        _textKeys[c] = key;
+        Add(parent, c);
+        return c;
     }
 
-    CheckBox AddCheck(string key, int x, int y, bool val)
+    ThemedSpinner Spn(double x, double y, double w, int min, int max, int step, int val, Control parent)
     {
-        CheckBox c = new CheckBox();
-        c.Text = L10n.T(key);
-        c.Location = new Point(x, y);
-        c.AutoSize = true;
-        c.Checked = val;
-        return c;
+        ThemedSpinner s = new ThemedSpinner();
+        s.Minimum = min;
+        s.Maximum = max;
+        s.Increment = step;
+        s.Value = Math.Max(min, Math.Min(max, val));
+        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
+        Add(parent, s);
+        return s;
+    }
+
+    ThemedSelect Sel(double x, double y, double w, string[] items, Control parent)
+    {
+        ThemedSelect s = new ThemedSelect();
+        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
+        s.Items = items;
+        Add(parent, s);
+        return s;
+    }
+
+    ThemedButton Btn(string key, double x, double y, double w, double h)
+    {
+        ThemedButton b = new ThemedButton();
+        b.Text = L10n.T(key);
+        b.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(h));
+        _textKeys[b] = key;
+        Controls.Add(b);
+        return b;
+    }
+
+    void Tip(Control c, string key)
+    {
+        _tipKeys[c] = key;
+        if (tip != null) tip.SetToolTip(c, L10n.T(key));
     }
 
     void BuildUi()
     {
         Text = "MacBookToolkit";
-        ClientSize = new Size(600, 580);
-        FormBorderStyle = FormBorderStyle.FixedSingle;
+        FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        Font = new Font("Segoe UI", 9f);
-        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        ClientSize = new Size(Ui.Px(456), Ui.Px(472));
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         tip = new ToolTip();
         tip.AutoPopDelay = 15000;
-        tip.InitialDelay = 400;
-        tip.ReshowDelay = 100;
+        tip.InitialDelay = 350;
+        tip.ReshowDelay = 80;
 
-        tabs = new TabControl();
-        tabs.SetBounds(12, 12, 576, 460);
+        caption = new ThemedCaption();
+        caption.Title = "MacBookToolkit";
+        caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
+        caption.SetBounds(0, 0, Ui.Px(456), Ui.Px(36));
+        caption.CloseClick += delegate { Close(); };
+        caption.MinimizeClick += delegate { WindowState = FormWindowState.Minimized; };
+        Controls.Add(caption);
 
-        TabPage tpScreen = new TabPage("Экран");
-        chkScreen = AddCheck("chk_screen", 15, 15, _s.ScreenEnabled);
-        tpScreen.Controls.Add(chkScreen);
-        lblIdle = AddLabel("lbl_idle", 60, tpScreen);
-        numIdle = AddNum(60, 1, 300, 1, _s.IdleSec, tpScreen);
-        lblDim = AddLabel("lbl_dim", 105, tpScreen);
-        numDim = AddNum(105, 1, 100, 1, _s.DimPct, tpScreen);
-        lblNormal = AddLabel("lbl_normal", 150, tpScreen);
-        numNormal = AddNum(150, 1, 100, 1, _s.NormalPct, tpScreen);
+        cardScreen = Card("sec_screen", 14, 48, 212, 146);
+        chkScreen = Chk("chk_screen", 12, 26, 190, cardScreen, _s.ScreenEnabled);
+        lblIdle = Lbl("lbl_idle", 12, 58, 112, 22, cardScreen, false, false);
+        numIdle = Spn(130, 54, 66, 1, 300, 1, _s.IdleSec, cardScreen);
+        lblDim = Lbl("lbl_dim", 12, 88, 112, 22, cardScreen, false, false);
+        numDim = Spn(130, 84, 66, 1, 100, 1, _s.DimPct, cardScreen);
+        lblNormal = Lbl("lbl_normal", 12, 118, 112, 22, cardScreen, false, false);
+        numNormal = Spn(130, 114, 66, 1, 100, 1, _s.NormalPct, cardScreen);
 
-        TabPage tpTouch = new TabPage("Тачпад");
-        chkTouch = AddCheck("chk_touch", 15, 15, _s.TouchEnabled);
-        tpTouch.Controls.Add(chkTouch);
-        lblBlock = AddLabel("lbl_block", 60, tpTouch);
-        numBlock = AddNum(60, 50, 2000, 50, _s.BlockMs, tpTouch);
+        cardKey = Card("sec_key", 240, 48, 202, 146);
+        chkKey = Chk("chk_key", 12, 26, 180, cardKey, _s.KeyEnabled);
+        lblUp = Lbl("lbl_up", 12, 58, 86, 22, cardKey, false, false);
+        numUp = Spn(104, 54, 66, 0, 200, 5, _s.DebounceUpMs, cardKey);
+        lblDown = Lbl("lbl_down", 12, 88, 86, 22, cardKey, false, false);
+        numDown = Spn(104, 84, 66, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey);
 
-        TabPage tpKey = new TabPage("Клавиатура");
-        chkKey = AddCheck("chk_key", 15, 15, _s.KeyEnabled);
-        tpKey.Controls.Add(chkKey);
-        lblUp = AddLabel("lbl_up", 60, tpKey);
-        numUp = AddNum(60, 0, 200, 5, _s.DebounceUpMs, tpKey);
-        lblDown = AddLabel("lbl_down", 105, tpKey);
-        numDown = AddNum(105, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, tpKey);
+        cardTouch = Card("sec_touch", 14, 204, 212, 82);
+        chkTouch = Chk("chk_touch", 12, 26, 190, cardTouch, _s.TouchEnabled);
+        lblBlock = Lbl("lbl_block", 12, 54, 112, 22, cardTouch, false, false);
+        numBlock = Spn(130, 50, 66, 50, 2000, 50, _s.BlockMs, cardTouch);
 
-        TabPage tpPower = new TabPage("Питание");
-        lblScreenOff = AddLabel("lbl_screenoff", 15, tpPower);
-        numScreenOff = AddNum(15, 1, 60, 1, _s.ScreenOffMin, tpPower);
+        cardPower = Card("sec_power", 240, 204, 202, 82);
+        lblScreenOff = Lbl("lbl_screenoff", 12, 26, 86, 22, cardPower, false, false);
+        numScreenOff = Spn(104, 22, 66, 1, 60, 1, _s.ScreenOffMin, cardPower);
 
-        tabs.TabPages.Add(tpScreen);
-        tabs.TabPages.Add(tpTouch);
-        tabs.TabPages.Add(tpKey);
-        tabs.TabPages.Add(tpPower);
-        Controls.Add(tabs);
+        cardWindow = Card("sec_window", 14, 296, 428, 118);
+        chkTopMost = Chk("chk_topmost", 12, 26, 200, cardWindow, _s.TopMost);
+        lblTheme = Lbl("lbl_theme", 12, 58, 52, 22, cardWindow, false, false);
+        cbTheme = Sel(68, 54, 150, ThemeItems(), cardWindow);
+        chkAutoStart = Chk("chk_autostart", 238, 26, 180, cardWindow, _s.AutoStart);
+        chkTray = Chk("chk_tray", 238, 52, 180, cardWindow, _s.ShowTray);
+        lblLang = Lbl("lbl_lang", 238, 84, 52, 22, cardWindow, false, false);
+        cbLang = Sel(292, 80, 124, new string[] { "Русский", "Українська", "English" }, cardWindow);
 
-        chkAutoStart = AddCheck("chk_autostart", 18, 480, _s.AutoStart);
-        Controls.Add(chkAutoStart);
-        chkTray = AddCheck("chk_tray", 18, 505, _s.ShowTray);
-        Controls.Add(chkTray);
+        btnSave = Btn("btn_save", 14, 424, 286, 34);
+        btnReset = Btn("btn_reset", 310, 424, 132, 34);
+        btnReset.Secondary = true;
 
-        lblLang = new Label();
-        lblLang.Text = L10n.T("lbl_lang");
-        lblLang.Location = new Point(18, 535);
-        lblLang.AutoSize = true;
-        Controls.Add(lblLang);
-
-        cbLang = new ComboBox();
-        cbLang.DropDownStyle = ComboBoxStyle.DropDownList;
-        cbLang.Items.Add("Русский");
-        cbLang.Items.Add("Українська");
-        cbLang.Items.Add("English");
-        cbLang.Location = new Point(90, 532);
-        cbLang.Width = 160;
-        cbLang.SelectedIndex = _s.Lang == "en" ? 2 : (_s.Lang == "uk" ? 1 : 0);
+        chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
         cbLang.SelectedIndexChanged += LangChanged;
-        Controls.Add(cbLang);
-
-        btnSave = new Button();
-        btnSave.Text = L10n.T("btn_save");
-        btnSave.Location = new Point(300, 478);
-        btnSave.Size = new Size(270, 36);
+        cbTheme.SelectedIndexChanged += ThemeChanged;
         btnSave.Click += SaveClick;
-        Controls.Add(btnSave);
-
-        btnReset = new Button();
-        btnReset.Text = L10n.T("btn_reset");
-        btnReset.Location = new Point(300, 520);
-        btnReset.Size = new Size(270, 36);
         btnReset.Click += ResetClick;
-        Controls.Add(btnReset);
 
+        _loading = true;
+        cbLang.SelectedIndex = _s.Lang == "en" ? 2 : (_s.Lang == "uk" ? 1 : 0);
+        cbTheme.SelectedIndex = _s.Theme == "light" ? 1 : (_s.Theme == "dark" ? 2 : 0);
+        _loading = false;
+
+        Tip(chkScreen, "tip_chk_screen"); Tip(numIdle, "tip_idle"); Tip(numDim, "tip_dim"); Tip(numNormal, "tip_normal");
+        Tip(chkTouch, "tip_chk_touch"); Tip(numBlock, "tip_block");
+        Tip(chkKey, "tip_chk_key"); Tip(numUp, "tip_up"); Tip(numDown, "tip_down");
+        Tip(numScreenOff, "tip_screenoff");
+        Tip(chkTopMost, "tip_topmost"); Tip(cbTheme, "tip_theme");
+        Tip(chkAutoStart, "tip_autostart"); Tip(chkTray, "tip_tray"); Tip(cbLang, "tip_lang");
+        Tip(btnSave, "tip_save"); Tip(btnReset, "tip_reset");
+
+        BuildTray();
+    }
+
+    string[] ThemeItems()
+    {
+        return new string[] { L10n.T("theme_system"), L10n.T("theme_light"), L10n.T("theme_dark") };
+    }
+
+    void BuildTray()
+    {
         tray = new NotifyIcon();
         tray.Icon = this.Icon != null ? this.Icon : SystemIcons.Application;
         tray.Text = "MacBookToolkit";
-        tray.Visible = _s.ShowTray;
         ContextMenu cm = new ContextMenu();
-        miShow = new MenuItem("Показать");
-        miShow.Click += ShowClick;
-        miExit = new MenuItem("Выход");
+        miShow = new MenuItem(L10n.T("tray_show"));
+        miShow.Click += delegate { ShowFromTray(); };
+        miTopMost = new MenuItem(L10n.T("tray_topmost"));
+        miTopMost.Click += delegate { ApplyTopMost(!TopMost, true); };
+        miAutoStart = new MenuItem(L10n.T("tray_autostart"));
+        miAutoStart.Click += delegate
+        {
+            _s.AutoStart = !_s.AutoStart;
+            _s.Save();
+            SetAutoStart(_s.AutoStart);
+            _loading = true; chkAutoStart.Checked = _s.AutoStart; _loading = false;
+            SyncTrayMenu();
+        };
+        miExit = new MenuItem(L10n.T("tray_exit"));
         miExit.Click += ExitClick;
         cm.MenuItems.Add(miShow);
+        cm.MenuItems.Add(miTopMost);
+        cm.MenuItems.Add(miAutoStart);
+        cm.MenuItems.Add(new MenuItem("-"));
         cm.MenuItems.Add(miExit);
         tray.ContextMenu = cm;
-        tray.DoubleClick += ShowClick;
-        Resize += FormResize;
-
-        tip.SetToolTip(chkScreen, L10n.T("tip_chk_screen"));
-        tip.SetToolTip(numIdle, L10n.T("tip_idle"));
-        tip.SetToolTip(numDim, L10n.T("tip_dim"));
-        tip.SetToolTip(numNormal, L10n.T("tip_normal"));
-        tip.SetToolTip(chkTouch, L10n.T("tip_chk_touch"));
-        tip.SetToolTip(numBlock, L10n.T("tip_block"));
-        tip.SetToolTip(chkKey, L10n.T("tip_chk_key"));
-        tip.SetToolTip(numUp, L10n.T("tip_up"));
-        tip.SetToolTip(numDown, L10n.T("tip_down"));
-        tip.SetToolTip(numScreenOff, L10n.T("tip_screenoff"));
-        tip.SetToolTip(chkAutoStart, L10n.T("tip_autostart"));
-        tip.SetToolTip(chkTray, L10n.T("tip_tray"));
-        tip.SetToolTip(btnSave, L10n.T("tip_save"));
-        tip.SetToolTip(btnReset, L10n.T("tip_reset"));
+        tray.MouseClick += delegate(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) ShowFromTray();
+        };
+        tray.DoubleClick += delegate { ShowFromTray(); };
+        tray.Visible = _s.ShowTray;
+        SyncTrayMenu();
     }
 
+    void SyncTrayMenu()
+    {
+        if (miTopMost != null) miTopMost.Checked = TopMost;
+        if (miAutoStart != null) miAutoStart.Checked = _s.AutoStart;
+    }
+
+    void ShowFromTray()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
+    }
+
+    // ---------- language / theme ----------
     void ApplyLanguage()
     {
+        _loading = true;
         L10n.Lang = _s.Lang;
-        tabs.TabPages[0].Text = L10n.T("tab_screen");
-        tabs.TabPages[1].Text = L10n.T("tab_touch");
-        tabs.TabPages[2].Text = L10n.T("tab_key");
-        tabs.TabPages[3].Text = L10n.T("tab_power");
-        chkScreen.Text = L10n.T("chk_screen");
-        lblIdle.Text = L10n.T("lbl_idle");
-        lblDim.Text = L10n.T("lbl_dim");
-        lblNormal.Text = L10n.T("lbl_normal");
-        chkTouch.Text = L10n.T("chk_touch");
-        lblBlock.Text = L10n.T("lbl_block");
-        chkKey.Text = L10n.T("chk_key");
-        lblUp.Text = L10n.T("lbl_up");
-        lblDown.Text = L10n.T("lbl_down");
-        lblScreenOff.Text = L10n.T("lbl_screenoff");
-        chkAutoStart.Text = L10n.T("chk_autostart");
-        chkTray.Text = L10n.T("chk_tray");
-        lblLang.Text = L10n.T("lbl_lang");
-        btnSave.Text = L10n.T("btn_save");
-        btnReset.Text = L10n.T("btn_reset");
-        miShow.Text = L10n.T("tray_show");
-        miExit.Text = L10n.T("tray_exit");
-        tip.SetToolTip(chkScreen, L10n.T("tip_chk_screen"));
-        tip.SetToolTip(numIdle, L10n.T("tip_idle"));
-        tip.SetToolTip(numDim, L10n.T("tip_dim"));
-        tip.SetToolTip(numNormal, L10n.T("tip_normal"));
-        tip.SetToolTip(chkTouch, L10n.T("tip_chk_touch"));
-        tip.SetToolTip(numBlock, L10n.T("tip_block"));
-        tip.SetToolTip(chkKey, L10n.T("tip_chk_key"));
-        tip.SetToolTip(numUp, L10n.T("tip_up"));
-        tip.SetToolTip(numDown, L10n.T("tip_down"));
-        tip.SetToolTip(numScreenOff, L10n.T("tip_screenoff"));
-        tip.SetToolTip(chkAutoStart, L10n.T("tip_autostart"));
-        tip.SetToolTip(chkTray, L10n.T("tip_tray"));
-        tip.SetToolTip(btnSave, L10n.T("tip_save"));
-        tip.SetToolTip(btnReset, L10n.T("tip_reset"));
+        Text = "MacBookToolkit";
+        foreach (KeyValuePair<Control, string> kv in _textKeys)
+        {
+            ThemedCard card = kv.Key as ThemedCard;
+            if (card != null) card.Title = L10n.T(kv.Value);
+            else kv.Key.Text = L10n.T(kv.Value);
+        }
+        if (caption != null)
+        {
+            caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
+            caption.Invalidate();
+        }
+        if (cbTheme != null)
+        {
+            int idx = cbTheme.SelectedIndex;
+            cbTheme.Items = ThemeItems();
+            cbTheme.SelectedIndex = idx < 0 ? 0 : idx;
+        }
+        if (miShow != null) miShow.Text = L10n.T("tray_show");
+        if (miTopMost != null) miTopMost.Text = L10n.T("tray_topmost");
+        if (miAutoStart != null) miAutoStart.Text = L10n.T("tray_autostart");
+        if (miExit != null) miExit.Text = L10n.T("tray_exit");
+        if (tip != null)
+        {
+            foreach (KeyValuePair<Control, string> kv in _tipKeys) tip.SetToolTip(kv.Key, L10n.T(kv.Value));
+        }
         _loading = false;
+        Invalidate(true);
+    }
+
+    void ThemeChanged(object sender, EventArgs e)
+    {
+        if (_loading) return;
+        _s.Theme = cbTheme.SelectedIndex == 1 ? "light" : (cbTheme.SelectedIndex == 2 ? "dark" : "system");
+        _s.Save();
+        ApplyThemeNow();
+    }
+
+    void ApplyThemeNow()
+    {
+        _theme = ThemeManager.Resolve(_s.Theme);
+        ThemeManager.ApplyTheme(this, _theme);
+        ApplyTitleBarTheme();
+        Invalidate(true);
+    }
+
+    void ApplyTitleBarTheme()
+    {
+        if (!IsHandleCreated) return;
+        try
+        {
+            int dark = (_theme != null && _theme.Dark) ? 1 : 0;
+            DwmSetWindowAttribute(Handle, 20, ref dark, 4);
+            DwmSetWindowAttribute(Handle, 19, ref dark, 4);
+            int round = 2;
+            DwmSetWindowAttribute(Handle, 33, ref round, 4);
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020);
+        }
+        catch { }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyTitleBarTheme();
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ClassStyle |= 0x20000;
+            return cp;
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == 0x001A || m.Msg == 0x031A || m.Msg == 0x0320)
+        {
+            if (_s != null && _s.Theme == "system" && IsHandleCreated)
+            {
+                try { BeginInvoke(new Action(ApplyThemeNow)); } catch { }
+            }
+        }
+    }
+
+    // ---------- settings actions ----------
+    void ApplyTopMost(bool on, bool persist)
+    {
+        TopMost = on;
+        _s.TopMost = on;
+        if (chkTopMost != null) { _loading = true; chkTopMost.Checked = on; _loading = false; }
+        SyncTrayMenu();
+        if (persist) _s.Save();
     }
 
     void LangChanged(object sender, EventArgs e)
@@ -590,40 +720,43 @@ public class MainForm : Form
         _s.Lang = cbLang.SelectedIndex == 2 ? "en" : (cbLang.SelectedIndex == 1 ? "uk" : "ru");
         _s.Save();
         ApplyLanguage();
+        ApplyThemeNow();
     }
 
     void SaveClick(object sender, EventArgs e)
     {
         _s.ScreenEnabled = chkScreen.Checked;
-        _s.IdleSec = (int)numIdle.Value;
-        _s.DimPct = (int)numDim.Value;
-        _s.NormalPct = (int)numNormal.Value;
+        _s.IdleSec = numIdle.Value;
+        _s.DimPct = numDim.Value;
+        _s.NormalPct = numNormal.Value;
         _s.TouchEnabled = chkTouch.Checked;
-        _s.BlockMs = (int)numBlock.Value;
+        _s.BlockMs = numBlock.Value;
         _s.KeyEnabled = chkKey.Checked;
-        _s.DebounceUpMs = (int)numUp.Value;
-        _s.DebounceDownMs = (int)numDown.Value;
-        _s.ScreenOffMin = (int)numScreenOff.Value;
+        _s.DebounceUpMs = numUp.Value;
+        _s.DebounceDownMs = numDown.Value;
+        _s.ScreenOffMin = numScreenOff.Value;
         _s.AutoStart = chkAutoStart.Checked;
         _s.ShowTray = chkTray.Checked;
+        _s.TopMost = chkTopMost.Checked;
         if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
         _s.Save();
-        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        if (_dimmed || _s.ScreenEnabled)
-        {
-            _dimmed = !SetBrightness(_s.NormalPct);
-        }
+        ApplyTopMost(_s.TopMost, false);
+        ApplyThemeNow();
+        _brightnessOk = SetBrightness(_s.NormalPct);
+        _dimmed = !_brightnessOk;
+        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        Program.LogNote("save", "settings saved and applied");
     }
 
     void ResetClick(object sender, EventArgs e)
     {
         if (MessageBox.Show(L10n.T("reset_confirm"), L10n.T("reset_title"),
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         Settings d = new Settings();
         d.Lang = _s.Lang;
+        d.Theme = _s.Theme;
         _s = d;
         _loading = true;
         chkScreen.Checked = d.ScreenEnabled;
@@ -640,20 +773,18 @@ public class MainForm : Form
         chkTray.Checked = d.ShowTray;
         _loading = false;
         _s.Save();
-        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
-        _dimmed = !SetBrightness(d.NormalPct);
+        ApplyTopMost(_s.TopMost, false);
+        ApplyThemeNow();
+        _brightnessOk = SetBrightness(d.NormalPct);
+        _dimmed = !_brightnessOk;
+        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        SyncTrayMenu();
         MessageBox.Show(L10n.T("reset_done"), "MacBookToolkit");
     }
 
-    void ShowClick(object sender, EventArgs e)
-    {
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
-    }
-
+    // ---------- lifecycle ----------
     void ExitClick(object sender, EventArgs e)
     {
         tray.Visible = false;
@@ -672,6 +803,31 @@ public class MainForm : Form
         }
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (_systemApplied || _s == null) return;
+        _systemApplied = true;
+        Calibrate();
+        ApplyTitleBarTheme();
+        Resize += FormResize;
+    }
+
+    void Calibrate()
+    {
+        _dimmed = false;
+        _brightnessTries = 0;
+        _brightnessOk = SetBrightness(_s.NormalPct);
+        if (_brightnessOk) _brightnessTries = 99;
+        SetAutoStart(_s.AutoStart);
+        tray.Visible = _s.ShowTray;
+        ApplyTopMost(_s.TopMost, false);
+        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        Program.LogNote("calibrate", "brightness=" + _s.NormalPct + "%; video idle=" +
+            _s.ScreenOffMin + " min; autostart=" + _s.AutoStart + "; topmost=" + _s.TopMost +
+            "; theme=" + _s.Theme + "; lang=" + _s.Lang);
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         if (e.CloseReason == CloseReason.UserClosing && _s.ShowTray)
@@ -683,15 +839,6 @@ public class MainForm : Form
         }
         RestoreBrightnessIfDimmed();
         base.OnFormClosing(e);
-    }
-
-    protected override void OnShown(EventArgs e)
-    {
-        base.OnShown(e);
-        if (_systemApplied || _s == null || _s.ParseFailed) return;
-        _systemApplied = true;
-        SetAutoStart(_s.AutoStart);
-        System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -709,6 +856,7 @@ public class MainForm : Form
         base.OnFormClosed(e);
     }
 
+    // ---------- system integration ----------
     void ApplyPower()
     {
         try
@@ -749,7 +897,7 @@ public class MainForm : Form
                 else k.DeleteValue("MacBookToolkit", false);
             }
         }
-        catch { }
+        catch (Exception ex) { Program.LogError("autostart", ex); }
     }
 
     static bool SetBrightness(int pct)
@@ -797,7 +945,12 @@ public class MainForm : Form
 
     void IdleTick(object sender, EventArgs e)
     {
-        bool wantDim = WantsDim(IdleMs(), _s);
+        if (!_brightnessOk && _brightnessTries < 5)
+        {
+            _brightnessTries++;
+            if (SetBrightness(_s.NormalPct)) { _brightnessOk = true; _dimmed = false; }
+        }
+        bool wantDim = WantsDim(IdleMs(), _s) && _brightnessOk;
         if (wantDim && !_dimmed)
         {
             if (SetBrightness(_s.DimPct)) _dimmed = true;
@@ -905,15 +1058,6 @@ public class MainForm : Form
         }
     }
 
-    public static void RestoreBrightnessIfDimmed()
-    {
-        try
-        {
-            if (_dimmed && _s != null) { SetBrightness(_s.NormalPct); _dimmed = false; }
-        }
-        catch { }
-    }
-
     void RemoveHooks()
     {
         try
@@ -923,17 +1067,37 @@ public class MainForm : Form
         }
         catch { }
     }
+
+    public static void RestoreBrightnessIfDimmed()
+    {
+        try
+        {
+            if (_dimmed && _s != null) { SetBrightness(_s.NormalPct); _dimmed = false; }
+        }
+        catch { }
+    }
 }
 
 public class Program
 {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")]
+    static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")]
+    static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")]
+    static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+
     [STAThread]
     static void Main()
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
+        Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e)
         {
             MainForm.RestoreBrightnessIfDimmed();
             LogError("UI thread", e.Exception);
@@ -943,16 +1107,69 @@ public class Program
             MainForm.RestoreBrightnessIfDimmed();
             LogError("AppDomain", e.ExceptionObject as Exception);
         };
+        Ui.InitDpi();
+
         bool createdNew;
-        using (System.Threading.Mutex mutex = new System.Threading.Mutex(true, "MacBookToolkit_SingleInstance", out createdNew))
+        using (Mutex mutex = new Mutex(true, "MacBookToolkit_SingleInstance", out createdNew))
         {
             if (!createdNew)
             {
-                MessageBox.Show(L10n.T("already_running"), "MacBookToolkit", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                IntPtr existing = WaitForWindow(4000);
+                if (existing != IntPtr.Zero)
+                {
+                    if (IsResponsive(existing))
+                    {
+                        ShowWindow(existing, 9);
+                        SetForegroundWindow(existing);
+                        return;
+                    }
+                    DialogResult r = MessageBox.Show(L10n.T("hung_body"), L10n.T("hung_title"),
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                    if (r != DialogResult.Yes) return;
+                    KillOwner(existing);
+                    Thread.Sleep(700);
+                }
             }
             Application.Run(new MainForm());
         }
+    }
+
+    static IntPtr WaitForWindow(int totalMs)
+    {
+        Stopwatch sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < totalMs)
+        {
+            IntPtr h = FindWindow(null, "MacBookToolkit");
+            if (h != IntPtr.Zero) return h;
+            Thread.Sleep(150);
+        }
+        return IntPtr.Zero;
+    }
+
+    static bool IsResponsive(IntPtr hwnd)
+    {
+        try
+        {
+            IntPtr res;
+            return SendMessageTimeout(hwnd, 0, IntPtr.Zero, IntPtr.Zero, 0x0002, 1200, out res) != IntPtr.Zero;
+        }
+        catch { return false; }
+    }
+
+    static void KillOwner(IntPtr hwnd)
+    {
+        try
+        {
+            uint pid;
+            GetWindowThreadProcessId(hwnd, out pid);
+            using (Process p = Process.GetProcessById((int)pid))
+            {
+                p.Kill();
+                p.WaitForExit(3000);
+            }
+            LogNote("single instance", "terminated hung instance pid=" + pid);
+        }
+        catch (Exception ex) { LogError("terminate hung", ex); }
     }
 
     public static void LogNote(string source, string note)

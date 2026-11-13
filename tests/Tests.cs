@@ -28,6 +28,7 @@ public static class Tests
         TestExcludedKeys();
         TestDimClamp();
         TestLoadFlags();
+        TestThemeAndTopMost();
         TestIdleDecision();
         TestLocalization();
         TestVersion();
@@ -53,6 +54,8 @@ public static class Tests
         Check("defaults ShowTray", s.ShowTray == true, "");
         Check("defaults TouchEnabled", s.TouchEnabled == true, "");
         Check("defaults KeyEnabled", s.KeyEnabled == true, "");
+        Check("defaults TopMost", s.TopMost == false, "");
+        Check("defaults Theme", s.Theme == "system", s.Theme);
     }
 
     static void TestParsingAndClamping()
@@ -60,8 +63,10 @@ public static class Tests
         Settings lo = Settings.FromLines(new string[] {
             "ScreenEnabled=False", "IdleSec=0", "DimPct=999", "NormalPct=100",
             "BlockMs=1", "DebounceUpMs=-1", "DebounceDownMs=100",
-            "ScreenOffMin=0", "Lang=xx"
+            "ScreenOffMin=0", "Lang=xx", "TopMost=True", "Theme=dark"
         });
+        Check("parse TopMost", lo.TopMost == true, "");
+        Check("valid Theme kept", lo.Theme == "dark", lo.Theme);
         Check("clamp IdleSec min", lo.IdleSec == 1, "" + lo.IdleSec);
         Check("clamp DimPct max", lo.DimPct == 100, "" + lo.DimPct);
 
@@ -194,6 +199,19 @@ public static class Tests
         Check("fresh defaults: ParseFailed=false", s.ParseFailed == false, "");
     }
 
+    static void TestThemeAndTopMost()
+    {
+        Settings s = Settings.FromLines(new string[] { "Theme=neon", "TopMost=maybe" });
+        Check("invalid Theme -> system", s.Theme == "system", s.Theme);
+        Check("invalid TopMost -> default", s.TopMost == false, "");
+        Settings l = Settings.FromLines(new string[] { "Theme=light" });
+        Check("Theme=light kept", l.Theme == "light", l.Theme);
+        Settings d = Settings.FromLines(new string[] { "Theme=DARK" });
+        Check("Theme is case sensitive -> system", d.Theme == "system", d.Theme);
+        Settings t = Settings.FromLines(new string[] { "TopMost=TRUE" });
+        Check("TopMost TRUE parsed", t.TopMost == true, "");
+    }
+
     static void TestIdleDecision()
     {
         MethodInfo m = typeof(MainForm).GetMethod("WantsDim", BindingFlags.NonPublic | BindingFlags.Static);
@@ -238,9 +256,9 @@ public static class Tests
         Dictionary<string, string> ru = (Dictionary<string, string>)t.GetField("ru", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> uk = (Dictionary<string, string>)t.GetField("uk", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> en = (Dictionary<string, string>)t.GetField("en", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-        Check("ru key count", ru.Count == 40, "" + ru.Count);
-        Check("uk key count", uk.Count == 40, "" + uk.Count);
-        Check("en key count", en.Count == 40, "" + en.Count);
+        Check("same key counts", ru.Count == uk.Count && uk.Count == en.Count, "" + ru.Count);
+        Check("enough keys", ru.Count >= 50, "" + ru.Count);
+        Check("has new v1.2 keys", ru.ContainsKey("chk_topmost") && ru.ContainsKey("theme_dark") && ru.ContainsKey("tray_autostart") && ru.ContainsKey("hung_body"), "");
         bool same = true;
         foreach (string k in ru.Keys) if (!uk.ContainsKey(k) || !en.ContainsKey(k)) same = false;
         foreach (string k in uk.Keys) if (!ru.ContainsKey(k)) same = false;
@@ -250,13 +268,13 @@ public static class Tests
         Check("no empty translations", noEmpty, "");
 
         L10n.Lang = "en";
-        Check("T en", L10n.T("btn_save") == "Save & apply", L10n.T("btn_save"));
+        Check("T en", L10n.T("btn_save") == "Save", L10n.T("btn_save"));
         L10n.Lang = "ru";
-        Check("T ru", L10n.T("btn_save") == "Сохранить и применить", L10n.T("btn_save"));
+        Check("T ru", L10n.T("btn_save") == "Сохранить", L10n.T("btn_save"));
         L10n.Lang = "uk";
-        Check("T uk", L10n.T("btn_save") == "Зберегти та застосувати", L10n.T("btn_save"));
+        Check("T uk", L10n.T("btn_save") == "Зберегти", L10n.T("btn_save"));
         L10n.Lang = "zz";
-        Check("T unknown lang falls back to ru", L10n.T("btn_save") == "Сохранить и применить", L10n.T("btn_save"));
+        Check("T unknown lang falls back to ru", L10n.T("btn_save") == "Сохранить", L10n.T("btn_save"));
         L10n.Lang = "ru";
         Check("T missing key returns key", L10n.T("no_such_key") == "no_such_key", "");
     }
@@ -264,10 +282,10 @@ public static class Tests
     static void TestVersion()
     {
         Assembly asm = typeof(MainForm).Assembly;
-        Check("assembly version 1.1.0.0", asm.GetName().Version.ToString() == "1.1.0.0", asm.GetName().Version.ToString());
+        Check("assembly version 1.2.0.0", asm.GetName().Version.ToString() == "1.2.0.0", asm.GetName().Version.ToString());
         object[] fv = asm.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), false);
-        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.1.0.0", "");
+        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.2.0.0", "");
         object[] iv = asm.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false);
-        Check("informational version 1.1", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.1", "");
+        Check("informational version 1.2", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.2", "");
     }
 }
