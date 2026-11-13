@@ -252,7 +252,7 @@ public static class Tests
 
     static void TestLocalization()
     {
-        Type t = typeof(L10n);
+        Type t = typeof(Texts);
         Dictionary<string, string> ru = (Dictionary<string, string>)t.GetField("ru", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> uk = (Dictionary<string, string>)t.GetField("uk", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
         Dictionary<string, string> en = (Dictionary<string, string>)t.GetField("en", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
@@ -267,16 +267,16 @@ public static class Tests
         foreach (string k in ru.Keys) if (string.IsNullOrEmpty(ru[k]) || string.IsNullOrEmpty(uk[k]) || string.IsNullOrEmpty(en[k])) noEmpty = false;
         Check("no empty translations", noEmpty, "");
 
-        L10n.Lang = "en";
-        Check("T en", L10n.T("btn_save") == "Save", L10n.T("btn_save"));
-        L10n.Lang = "ru";
-        Check("T ru", L10n.T("btn_save") == "Сохранить", L10n.T("btn_save"));
-        L10n.Lang = "uk";
-        Check("T uk", L10n.T("btn_save") == "Зберегти", L10n.T("btn_save"));
-        L10n.Lang = "zz";
-        Check("T unknown lang falls back to ru", L10n.T("btn_save") == "Сохранить", L10n.T("btn_save"));
-        L10n.Lang = "ru";
-        Check("T missing key returns key", L10n.T("no_such_key") == "no_such_key", "");
+        Texts.Lang = "en";
+        Check("T en", Texts.T("btn_save") == "💾 Save", Texts.T("btn_save"));
+        Texts.Lang = "ru";
+        Check("T ru", Texts.T("btn_save") == "💾 Сохранить", Texts.T("btn_save"));
+        Texts.Lang = "uk";
+        Check("T uk", Texts.T("btn_save") == "💾 Зберегти", Texts.T("btn_save"));
+        Texts.Lang = "zz";
+        Check("T unknown lang falls back to ru", Texts.T("btn_save") == "💾 Сохранить", Texts.T("btn_save"));
+        Texts.Lang = "ru";
+        Check("T missing key returns key", Texts.T("no_such_key") == "no_such_key", "");
     }
 
     static void TestVersion()
