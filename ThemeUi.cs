@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -77,6 +80,25 @@ public static class Icons
             sf.LineAlignment = StringAlignment.Center;
             sf.FormatFlags = StringFormatFlags.NoWrap;
             g.DrawString(glyph, fnt, b, r, sf);
+        }
+    }
+
+    public static void DrawDrop(Graphics g, Rectangle r, Color c)
+    {
+        float cx = r.X + r.Width / 2f;
+        float top = r.Y + r.Height * 0.06f;
+        float bottom = r.Bottom - r.Height * 0.08f;
+        float rad = r.Width * 0.30f;
+        using (GraphicsPath p = new GraphicsPath())
+        {
+            p.AddEllipse(cx - rad, bottom - rad * 2, rad * 2, rad * 2);
+            p.AddPolygon(new PointF[] {
+                new PointF(cx, top),
+                new PointF(cx + rad * 0.95f, bottom - rad),
+                new PointF(cx - rad * 0.95f, bottom - rad)
+            });
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(225, c))) g.FillPath(b, p);
+            using (Pen pen = new Pen(c)) g.DrawPath(pen, p);
         }
     }
 
@@ -268,13 +290,22 @@ public interface IThemed
 }
 
 // ---------- Card ----------
+public class CardLink
+{
+    public string Text;
+    public string Uri;
+    public Rectangle Bounds = Rectangle.Empty;
+}
+
 public class ThemedCard : Panel, IThemed
 {
     public string TitleKey = "";
     public string Title = "";
     public string TitleIcon = "";
+    public List<CardLink> Links = new List<CardLink>();
     ThemeColors _t;
     Color _surface;
+    int _hoverLink = -1;
 
     public ThemedCard()
     {
@@ -301,14 +332,82 @@ public class ThemedCard : Panel, IThemed
             using (SolidBrush b = new SolidBrush(t.Card)) g.FillPath(b, p);
             using (Pen pen = new Pen(t.Border)) g.DrawPath(pen, p);
         }
-        if (!string.IsNullOrEmpty(Title))
+        int band = Ui.Px(30);
+        if (Links.Count > 0)
         {
-            int band = Ui.Px(30);
+            using (Font f = new Font(Font, FontStyle.Bold))
+            {
+                TextFormatFlags measureFlags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+                StringBuilder full = new StringBuilder();
+                int x = Ui.Px(14);
+                for (int i = 0; i < Links.Count; i++)
+                {
+                    string before = full.ToString();
+                    full.Append(Links[i].Text);
+                    int xStart = x + TextRenderer.MeasureText(before, f, new Size(int.MaxValue, int.MaxValue), measureFlags).Width;
+                    int xEnd = x + TextRenderer.MeasureText(full.ToString(), f, new Size(int.MaxValue, int.MaxValue), measureFlags).Width;
+                    Links[i].Bounds = new Rectangle(xStart, 0, Math.Max(1, xEnd - xStart), band);
+                }
+                string titleText = full.ToString();
+                TextRenderer.DrawText(g, titleText, f,
+                    new Rectangle(Ui.Px(14), 0, Width - Ui.Px(28), band),
+                    t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                for (int i = 0; i < Links.Count; i++)
+                {
+                    if (i != _hoverLink || Links[i].Uri == null) continue;
+                    TextRenderer.DrawText(g, Links[i].Text, f, Links[i].Bounds, t.Accent,
+                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                    using (Pen pen = new Pen(t.Accent, Math.Max(1f, Ui.Px(1f))))
+                        g.DrawLine(pen, Links[i].Bounds.X, band - Ui.Px(7), Links[i].Bounds.Right, band - Ui.Px(7));
+                }
+            }
+        }
+        else if (!string.IsNullOrEmpty(Title))
+        {
             using (Font f = new Font(Font, FontStyle.Bold))
             {
                 TextRenderer.DrawText(g, Title, f,
                     new Rectangle(Ui.Px(14), 0, Width - Ui.Px(28), band),
                     t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            }
+        }
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        int hover = -1;
+        for (int i = 0; i < Links.Count; i++)
+        {
+            if (Links[i].Uri != null && Links[i].Bounds.Contains(e.Location)) { hover = i; break; }
+        }
+        Cursor = hover >= 0 ? Cursors.Hand : Cursors.Default;
+        if (hover != _hoverLink)
+        {
+            _hoverLink = hover;
+            Invalidate();
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        Cursor = Cursors.Default;
+        if (_hoverLink != -1) { _hoverLink = -1; Invalidate(); }
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.Button != MouseButtons.Left) return;
+        for (int i = 0; i < Links.Count; i++)
+        {
+            CardLink link = Links[i];
+            if (link.Uri != null && link.Bounds.Contains(e.Location))
+            {
+                try { Process.Start(new ProcessStartInfo(link.Uri) { UseShellExecute = true }); }
+                catch { }
+                return;
             }
         }
     }
@@ -319,6 +418,7 @@ public class ThemedLabel : Control, IThemed
 {
     public string IconGlyph = "";
     public Image IconImage;
+    public bool IconDrop = false;
     public bool Muted = false;
     public bool Bold = false;
     public bool AutoFit = true;
@@ -360,10 +460,11 @@ public class ThemedLabel : Control, IThemed
         Color fg = Muted ? t.Sub : t.Fore;
         int iconSize = Ui.Px(16);
         int left = 0;
-        if (!string.IsNullOrEmpty(IconGlyph) || IconImage != null)
+        if (IconDrop || !string.IsNullOrEmpty(IconGlyph) || IconImage != null)
         {
             Rectangle ir = new Rectangle(0, (Height - iconSize) / 2, iconSize, iconSize);
-            if (IconImage != null) Icons.DrawImage(g, IconImage, ir);
+            if (IconDrop) Icons.DrawDrop(g, ir, Muted ? t.Sub : t.Accent);
+            else if (IconImage != null) Icons.DrawImage(g, IconImage, ir);
             else Icons.Draw(g, IconGlyph, ir, Muted ? t.Sub : t.Accent, Ui.Px(14));
             left = iconSize + Ui.Px(8);
         }
@@ -469,7 +570,7 @@ public class ThemedCheckBox : Control, IThemed
             else
             {
                 using (SolidBrush b = new SolidBrush(t.InputBack)) g.FillPath(b, p);
-                using (Pen pen = new Pen(_hover && Enabled ? t.Accent : t.Border)) g.DrawPath(pen, p);
+                using (Pen pen = new Pen((_hover || _focus) && Enabled ? t.Accent : t.Border)) g.DrawPath(pen, p);
             }
         }
         if (on)
@@ -490,14 +591,6 @@ public class ThemedCheckBox : Control, IThemed
         Rectangle rt = new Rectangle(tx, 0, Math.Max(0, Width - tx), Height);
         TextRenderer.DrawText(g, Text, Font, rt, Enabled ? t.Fore : t.Sub,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        if (_focus)
-        {
-            using (Pen pen = new Pen(Ui.Mix(t.Accent, t.Card, 0.45)))
-            {
-                pen.DashStyle = DashStyle.Dot;
-                g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
-            }
-        }
     }
 }
 
@@ -690,6 +783,7 @@ public class ThemedSelect : Control, IThemed
     Image[] _images = new Image[0];
     int _index;
     SelectPopup _popup;
+    public static int PopupOpen;
 
     public event EventHandler SelectedIndexChanged;
 
@@ -806,6 +900,9 @@ public class ThemedSelect : Control, IThemed
         _popup.ClientSize = new Size(w, h);
         _popup.RowHeight = rowH;
         _popup.Pad = pad;
+        PopupOpen++;
+        TipBalloon.HideTip();
+        _popup.FormClosed += delegate { PopupOpen = Math.Max(0, PopupOpen - 1); };
         _popup.Show();
         _popup.SelectRow(_index);
         _popup.RowChosen += delegate(int idx)
@@ -1226,6 +1323,7 @@ public class TipBalloon : Form
         {
             CreateParams cp = base.CreateParams;
             cp.ClassStyle |= 0x20000;
+            cp.ExStyle |= 0x08000000 | 0x00000080;
             return cp;
         }
     }

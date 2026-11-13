@@ -358,7 +358,7 @@ public class MainForm : Form
     {
         ThemedCheckBox c = new ThemedCheckBox();
         c.Checked = val;
-        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(24), Ui.Px(28));
+        c.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(24), Ui.Px(30));
         Add(parent, c);
         return c;
     }
@@ -377,7 +377,7 @@ public class MainForm : Form
         s.Increment = step;
         s.Value = Math.Max(min, Math.Min(max, val));
         s.Suffix = " " + Texts.T(unitKey);
-        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
+        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(30));
         _unitKeys[s] = unitKey;
         Add(parent, s);
         return s;
@@ -386,7 +386,7 @@ public class MainForm : Form
     ThemedSelect Sel(double x, double y, double w, string[] items, Control parent)
     {
         ThemedSelect s = new ThemedSelect();
-        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(26));
+        s.SetBounds(Ui.Px(x), Ui.Px(y), Ui.Px(w), Ui.Px(30));
         s.Items = items;
         Add(parent, s);
         return s;
@@ -429,6 +429,7 @@ public class MainForm : Form
     void TipTick(object sender, EventArgs e)
     {
         if (_tipControl == null || _tipShown) return;
+        if (ThemedSelect.PopupOpen > 0) return;
         if (Environment.TickCount - _tipAt < 420) return;
         _tipShown = true;
         string key;
@@ -436,6 +437,22 @@ public class MainForm : Form
         {
             TipBalloon.ShowTip(Texts.T(key), _tipPos, _theme != null ? _theme : ThemeManager.Build(false));
         }
+    }
+
+    void ApplyCardLinks()
+    {
+        if (cardScreen == null) return;
+        cardScreen.Links.Clear();
+        cardScreen.Links.Add(new CardLink { Text = Texts.T("sec_display_left"), Uri = "ms-settings:powersleep" });
+        cardScreen.Links.Add(new CardLink { Text = Texts.T("sec_display_and") });
+        cardScreen.Links.Add(new CardLink { Text = Texts.T("sec_display_right"), Uri = "ms-settings:display" });
+        cardKey.Links.Clear();
+        cardKey.Links.Add(new CardLink { Text = Texts.T("sec_key"), Uri = "ms-settings:keyboard-advanced" });
+        cardTouch.Links.Clear();
+        cardTouch.Links.Add(new CardLink { Text = Texts.T("sec_touch"), Uri = "ms-settings:devices-touchpad" });
+        cardOptions.Links.Clear();
+        cardOptions.Links.Add(new CardLink { Text = Texts.T("sec_options"), Uri = "ms-settings:" });
+        cardScreen.Invalidate(); cardKey.Invalidate(); cardTouch.Invalidate(); cardOptions.Invalidate();
     }
 
     void FitLabels()
@@ -517,6 +534,7 @@ public class MainForm : Form
         lblTheme = Lbl("lbl_theme", "\uE790", 14, 32, 140, 30, cardOptions);
         cbTheme = Sel(158, 32, 156, ThemeItems(), cardOptions);
         lblAccent = Lbl("lbl_accent", "", 14, 66, 140, 30, cardOptions);
+        lblAccent.IconDrop = true;
         cbAccent = Sel(158, 66, 156, AccentItems(), cardOptions);
         cbAccent.ItemImages = AccentSwatches();
         lblLang = Lbl("lbl_lang", "\uE774", 14, 100, 140, 30, cardOptions);
@@ -525,12 +543,13 @@ public class MainForm : Form
         lb = Lbl("chk_topmost", "\uE718", 14, 134, 270, 30, cardOptions);
         chkTopMost = Chk(292, 134, cardOptions, _s.TopMost); LinkToggle(lb, chkTopMost);
         Tip(lb, "tip_topmost"); Tip(chkTopMost, "tip_topmost");
-        lb = Lbl("chk_autostart", "\uE7E8", 14, 168, 270, 30, cardOptions);
+        lb = Lbl("chk_autostart", "\uE768", 14, 168, 270, 30, cardOptions);
         chkAutoStart = Chk(292, 168, cardOptions, _s.AutoStart); LinkToggle(lb, chkAutoStart);
         Tip(lb, "tip_autostart"); Tip(chkAutoStart, "tip_autostart");
         lb = Lbl("chk_tray", "\uE8A5", 14, 202, 270, 30, cardOptions);
         chkTray = Chk(292, 202, cardOptions, _s.ShowTray); LinkToggle(lb, chkTray);
         Tip(lb, "tip_tray"); Tip(chkTray, "tip_tray");
+        ApplyCardLinks();
 
         btnSave = Btn("btn_save", "\uE74E", 16, 422, 328, 40);
         btnReset = Btn("btn_reset", "\uE72C", 356, 422, 328, 40);
@@ -589,7 +608,7 @@ public class MainForm : Form
 
     void RefreshAccentVisuals()
     {
-        if (lblAccent != null) lblAccent.IconImage = Swatches.Accent(_s.Accent);
+        if (lblAccent != null) { lblAccent.IconDrop = true; lblAccent.IconImage = null; }
         if (cbAccent != null) cbAccent.ItemImages = AccentSwatches();
     }
 
@@ -684,6 +703,7 @@ public class MainForm : Form
             cbAccent.ItemImages = AccentSwatches();
         }
         RefreshAccentVisuals();
+        ApplyCardLinks();
         foreach (KeyValuePair<ThemedSpinner, string> kv in _unitKeys)
         {
             kv.Key.Suffix = " " + Texts.T(kv.Value);

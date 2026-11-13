@@ -8,6 +8,9 @@ public static class Texts
     static Dictionary<string, string> ru = new Dictionary<string, string>()
     {
         {"sec_display","Дисплей и яркость"},
+        {"sec_display_left","Дисплей"},
+        {"sec_display_and"," и "},
+        {"sec_display_right","яркость"},
         {"sec_key","Клавиатура"},
         {"sec_touch","Трекпад"},
         {"sec_options","Опции"},
@@ -91,6 +94,9 @@ public static class Texts
     static Dictionary<string, string> uk = new Dictionary<string, string>()
     {
         {"sec_display","Дисплей і яскравість"},
+        {"sec_display_left","Дисплей"},
+        {"sec_display_and"," і "},
+        {"sec_display_right","яскравість"},
         {"sec_key","Клавіатура"},
         {"sec_touch","Трекпад"},
         {"sec_options","Опції"},
@@ -174,6 +180,9 @@ public static class Texts
     static Dictionary<string, string> en = new Dictionary<string, string>()
     {
         {"sec_display","Display & brightness"},
+        {"sec_display_left","Display"},
+        {"sec_display_and"," & "},
+        {"sec_display_right","brightness"},
         {"sec_key","Keyboard"},
         {"sec_touch","Trackpad"},
         {"sec_options","Options"},
