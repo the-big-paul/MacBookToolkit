@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -768,6 +768,11 @@ public class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new MainForm());
+        bool createdNew;
+        using (System.Threading.Mutex mutex = new System.Threading.Mutex(true, "MacBookToolkit_SingleInstance", out createdNew))
+        {
+            if (!createdNew) return;
+            Application.Run(new MainForm());
+        }
     }
 }
