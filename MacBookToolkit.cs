@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Management;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -25,6 +26,9 @@ public class Settings
     public bool AutoStart = true;
     public bool ShowTray = true;
     public bool TopMost = false;
+    public bool ProfileEnabled = false;
+    public bool NightLight = false;
+    public bool AutoUpdateCheck = true;
     public string Lang = "ru";
     public string Theme = "system";
     public string Accent = "system";
@@ -89,6 +93,9 @@ public class Settings
                 case "AutoStart": if (bool.TryParse(v, out b)) s.AutoStart = b; break;
                 case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
                 case "TopMost": if (bool.TryParse(v, out b)) s.TopMost = b; break;
+                case "ProfileEnabled": if (bool.TryParse(v, out b)) s.ProfileEnabled = b; break;
+                case "NightLight": if (bool.TryParse(v, out b)) s.NightLight = b; break;
+                case "AutoUpdateCheck": if (bool.TryParse(v, out b)) s.AutoUpdateCheck = b; break;
                 case "Lang": s.Lang = v; break;
                 case "Theme": s.Theme = v; break;
                 case "Accent": s.Accent = v; break;
@@ -139,6 +146,9 @@ public class Settings
             sb.AppendLine("AutoStart=" + AutoStart.ToString());
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
             sb.AppendLine("TopMost=" + TopMost.ToString());
+            sb.AppendLine("ProfileEnabled=" + ProfileEnabled.ToString());
+            sb.AppendLine("NightLight=" + NightLight.ToString());
+            sb.AppendLine("AutoUpdateCheck=" + AutoUpdateCheck.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
             sb.AppendLine("Theme=" + Theme.ToString());
             sb.AppendLine("Accent=" + Accent.ToString());
@@ -232,6 +242,10 @@ public class MainForm : Form
     static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     [DllImport("user32.dll")]
     static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")]
+    static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint vk);
+    [DllImport("user32.dll")]
+    static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [StructLayout(LayoutKind.Sequential)]
     struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
@@ -271,20 +285,33 @@ public class MainForm : Form
     Dictionary<Control, string> _tipKeys = new Dictionary<Control, string>();
     Dictionary<ThemedSpinner, string> _unitKeys = new Dictionary<ThemedSpinner, string>();
 
-    ThemedCard cardScreen, cardKey, cardTouch, cardOptions;
+    ThemedCard cardScreen, cardKey, cardTouch, cardOptions, cardSystem;
     ThemedCaption caption;
     ThemedLabel lblIdle, lblDim, lblNormal;
     ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblAccent, lblLang;
     ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray;
+    ThemedCheckBox chkProfile, chkNight, chkAutoUpdate;
+    ThemedLabel lblBattery, lblDrivers;
     ThemedSpinner numIdle, numDim, numNormal, numBlock, numUp, numDown, numScreenOff;
     ThemedSelect cbLang, cbTheme, cbAccent;
     ThemedButton btnSave, btnReset;
     NotifyIcon tray;
     MenuItem miShow, miTopMost, miAutoStart, miExit;
+    MenuItem miNoDim, miLock, miSleep, miHibernate, miNight, miKbdLock, miCheckUpd, miUpdate, miBattery;
     System.Windows.Forms.Timer idleTimer;
     System.Windows.Forms.Timer themeWatch;
     System.Windows.Forms.Timer tipTimer;
     System.Windows.Forms.Timer tuneTimer;
+    System.Windows.Forms.Timer batteryTimer;
+    DateTime _lastBatteryRefresh = DateTime.MinValue;
+    NightLightForm _night;
+    bool _suppressDim;
+    DateTime _suppressUntil = DateTime.MinValue;
+    static bool _kbdLocked;
+    bool _profileBattery;
+    bool _warnedWear;
+    bool _warnedDrivers;
+    UpdateInfo _update;
     Control _tipControl;
     string _tipKey;
     Point _tipPos;
@@ -321,6 +348,18 @@ public class MainForm : Form
         tuneTimer.Interval = 15000;
         tuneTimer.Tick += TuneTick;
         tuneTimer.Start();
+        batteryTimer = new System.Windows.Forms.Timer();
+        batteryTimer.Interval = 5000;
+        batteryTimer.Tick += delegate
+        {
+            ApplyProfileIfNeeded();
+            if ((DateTime.Now - _lastBatteryRefresh).TotalSeconds >= 60)
+            {
+                _lastBatteryRefresh = DateTime.Now;
+                RefreshBatteryStatus();
+            }
+        };
+        batteryTimer.Start();
         Move += delegate { TipBalloon.HideTip(); };
     }
 
@@ -452,6 +491,11 @@ public class MainForm : Form
         cardTouch.Links.Add(new CardLink { Text = Texts.T("sec_touch"), Uri = "ms-settings:devices-touchpad" });
         cardOptions.Links.Clear();
         cardOptions.Links.Add(new CardLink { Text = Texts.T("sec_options"), Uri = "ms-settings:" });
+        if (cardSystem != null)
+        {
+            cardSystem.Links.Clear();
+            cardSystem.Links.Add(new CardLink { Text = Texts.T("sec_system"), Uri = "ms-settings:batterysaver" });
+        }
         cardScreen.Invalidate(); cardKey.Invalidate(); cardTouch.Invalidate(); cardOptions.Invalidate();
     }
 
@@ -486,7 +530,7 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(700), Ui.Px(478));
+        ClientSize = new Size(Ui.Px(700), Ui.Px(698));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         caption = new ThemedCaption();
@@ -551,8 +595,25 @@ public class MainForm : Form
         Tip(lb, "tip_tray"); Tip(chkTray, "tip_tray");
         ApplyCardLinks();
 
-        btnSave = Btn("btn_save", "\uE74E", 16, 422, 328, 40);
-        btnReset = Btn("btn_reset", "\uE72C", 356, 422, 328, 40);
+        cardSystem = Card("sec_system", "", 16, 422, 668, 208);
+        lb = Lbl("chk_profile", "\uE945", 14, 32, 270, 30, cardSystem);
+        chkProfile = Chk(628, 32, cardSystem, _s.ProfileEnabled); LinkToggle(lb, chkProfile);
+        Tip(lb, "tip_profile"); Tip(chkProfile, "tip_profile");
+        lblBattery = Lbl("status_battery_na", "\uE7E8", 14, 66, 600, 30, cardSystem);
+        _textKeys.Remove(lblBattery);
+        Tip(lblBattery, "tip_battery");
+        lb = Lbl("chk_night", "\uE708", 14, 100, 270, 30, cardSystem);
+        chkNight = Chk(628, 100, cardSystem, _s.NightLight); LinkToggle(lb, chkNight);
+        Tip(lb, "tip_night"); Tip(chkNight, "tip_night");
+        lb = Lbl("chk_autoupdate", "\uE72C", 14, 134, 270, 30, cardSystem);
+        chkAutoUpdate = Chk(628, 134, cardSystem, _s.AutoUpdateCheck); LinkToggle(lb, chkAutoUpdate);
+        Tip(lb, "tip_autoupdate"); Tip(chkAutoUpdate, "tip_autoupdate");
+        lblDrivers = Lbl("status_drivers_na", "\uE713", 14, 168, 600, 30, cardSystem);
+        _textKeys.Remove(lblDrivers);
+        Tip(lblDrivers, "tip_drivers");
+
+        btnSave = Btn("btn_save", "\uE74E", 16, 642, 328, 40);
+        btnReset = Btn("btn_reset", "\uE72C", 356, 642, 328, 40);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
@@ -581,6 +642,9 @@ public class MainForm : Form
         Tip(btnSave, "tip_save"); Tip(btnReset, "tip_reset");
 
         RefreshAccentVisuals();
+        _profileBattery = IsOnBattery();
+        RefreshBatteryStatus();
+        RefreshDriverStatus();
         BuildTray();
     }
 
@@ -633,9 +697,52 @@ public class MainForm : Form
         };
         miExit = new MenuItem(Texts.T("tray_exit"));
         miExit.Click += ExitClick;
+
+        miNoDim = new MenuItem(Texts.T("tray_nodim"));
+        miNoDim.Click += delegate { ToggleSuppressDim(); };
+        miNight = new MenuItem(Texts.T("tray_night"));
+        miNight.Click += delegate { ToggleNightLight(!_s.NightLight); };
+        miKbdLock = new MenuItem(Texts.T("tray_kbdlock"));
+        miKbdLock.Click += delegate { ToggleKeyboardLock(); };
+
+        miLock = new MenuItem(Texts.T("tray_lock"));
+        miLock.Click += delegate { QuickActions.Lock(); };
+        miSleep = new MenuItem(Texts.T("tray_sleep"));
+        miSleep.Click += delegate { QuickActions.Sleep(); };
+        miHibernate = new MenuItem(Texts.T("tray_hibernate"));
+        miHibernate.Click += delegate { QuickActions.Hibernate(); };
+
+        miBattery = new MenuItem(Texts.T("status_battery_na"));
+        miBattery.Enabled = false;
+        miCheckUpd = new MenuItem(Texts.T("tray_checkupd"));
+        miCheckUpd.Click += delegate { CheckUpdates(true); };
+        miUpdate = new MenuItem(Texts.T("tray_update").Replace("{0}", "").Trim());
+        miUpdate.Visible = false;
+        miUpdate.Click += delegate
+        {
+            if (_update == null) return;
+            if (!string.IsNullOrEmpty(_update.AssetUrl)) { DownloadUpdate(); }
+            else if (!string.IsNullOrEmpty(_update.PageUrl))
+            {
+                try { Process.Start(new ProcessStartInfo(_update.PageUrl) { UseShellExecute = true }); } catch { }
+            }
+        };
+
         cm.MenuItems.Add(miShow);
         cm.MenuItems.Add(miTopMost);
         cm.MenuItems.Add(miAutoStart);
+        cm.MenuItems.Add(new MenuItem("-"));
+        cm.MenuItems.Add(miNoDim);
+        cm.MenuItems.Add(miNight);
+        cm.MenuItems.Add(miKbdLock);
+        cm.MenuItems.Add(new MenuItem("-"));
+        cm.MenuItems.Add(miLock);
+        cm.MenuItems.Add(miSleep);
+        cm.MenuItems.Add(miHibernate);
+        cm.MenuItems.Add(new MenuItem("-"));
+        cm.MenuItems.Add(miBattery);
+        cm.MenuItems.Add(miCheckUpd);
+        cm.MenuItems.Add(miUpdate);
         cm.MenuItems.Add(new MenuItem("-"));
         cm.MenuItems.Add(miExit);
         tray.ContextMenu = cm;
@@ -652,6 +759,9 @@ public class MainForm : Form
     {
         if (miTopMost != null) miTopMost.Checked = TopMost;
         if (miAutoStart != null) miAutoStart.Checked = _s.AutoStart;
+        if (miNight != null) miNight.Checked = _s.NightLight;
+        if (miKbdLock != null) miKbdLock.Checked = _kbdLocked;
+        if (miNoDim != null) miNoDim.Checked = _suppressDim;
     }
 
     void ShowFromTray()
@@ -669,6 +779,182 @@ public class MainForm : Form
             Process.Start(new ProcessStartInfo("https://github.com/the-big-paul/MacBookToolkit") { UseShellExecute = true });
         }
         catch (Exception ex) { Program.LogError("open repository", ex); }
+    }
+
+    // ---------- profiles, battery, night light, updates ----------
+    bool IsOnBattery()
+    {
+        try { return SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline; }
+        catch { return false; }
+    }
+
+    int EffIdleSec { get { return (_s.ProfileEnabled && IsOnBattery()) ? 15 : _s.IdleSec; } }
+    int EffDimPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? 10 : _s.DimPct; } }
+    int EffNormalPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? 60 : _s.NormalPct; } }
+    int EffScreenOffMin { get { return (_s.ProfileEnabled && IsOnBattery()) ? 5 : _s.ScreenOffMin; } }
+
+    void RefreshBatteryStatus()
+    {
+        if (lblBattery == null) return;
+        int design, full, cycles, charge;
+        if (BatteryInfo.TryRead(out design, out full, out cycles, out charge))
+        {
+            int wear = BatteryInfo.WearPercent(design, full);
+            string cyc = cycles > 0 ? cycles.ToString() : "—";
+            lblBattery.Text = string.Format(Texts.T("status_battery"), charge, wear, cyc);
+            if (!_warnedWear && wear >= 20)
+            {
+                _warnedWear = true;
+                if (tray != null) tray.ShowBalloonTip(4000, "MacBookToolkit", string.Format(Texts.T("msg_wear"), wear), ToolTipIcon.Warning);
+            }
+        }
+        else
+        {
+            int c = BatteryInfo.WmiCharge();
+            lblBattery.Text = Texts.T("status_battery_na");
+            if (c > 0) lblBattery.Text = string.Format(Texts.T("status_battery"), c, 0, 0);
+        }
+        if (miBattery != null) miBattery.Text = lblBattery.Text;
+        lblBattery.FitContent();
+    }
+
+    void RefreshDriverStatus()
+    {
+        if (lblDrivers == null) return;
+        bool ok = BootCampCheck.DriversPresent();
+        lblDrivers.Text = Texts.T(ok ? "status_drivers_ok" : "status_drivers_na");
+        lblDrivers.FitContent();
+        if (!ok && !_warnedDrivers)
+        {
+            _warnedDrivers = true;
+            if (tray != null) tray.ShowBalloonTip(4000, "MacBookToolkit", Texts.T("msg_drivers"), ToolTipIcon.Warning);
+        }
+    }
+
+    void ApplyProfileIfNeeded()
+    {
+        bool battery = IsOnBattery();
+        if (battery == _profileBattery) return;
+        _profileBattery = battery;
+        if (!_s.ProfileEnabled) return;
+        _brightnessOk = SetBrightness(EffNormalPct);
+        _dimmed = !_brightnessOk;
+        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        Program.LogNote("profile", (battery ? "battery" : "ac") + " profile applied, brightness=" + EffNormalPct + "%");
+    }
+
+    void ToggleNightLight(bool on)
+    {
+        _s.NightLight = on;
+        _s.Save();
+        if (on)
+        {
+            if (_night == null) { _night = new NightLightForm(); _night.Show(); }
+        }
+        else if (_night != null) { _night.Close(); _night.Dispose(); _night = null; }
+        if (miNight != null) miNight.Checked = on;
+        if (chkNight != null) { _loading = true; chkNight.Checked = on; _loading = false; }
+        if (tray != null) tray.ShowBalloonTip(1200, "MacBookToolkit", Texts.T(on ? "msg_night_on" : "msg_night_off"), ToolTipIcon.Info);
+    }
+
+    void ToggleKeyboardLock()
+    {
+        _kbdLocked = !_kbdLocked;
+        if (miKbdLock != null) miKbdLock.Checked = _kbdLocked;
+        if (tray != null) tray.ShowBalloonTip(2500, "MacBookToolkit", Texts.T(_kbdLocked ? "msg_kbd_lock" : "msg_kbd_unlock"), ToolTipIcon.Info);
+    }
+
+    void ToggleSuppressDim()
+    {
+        if (_suppressDim) { _suppressDim = false; _suppressUntil = DateTime.MinValue; }
+        else { _suppressDim = true; _suppressUntil = DateTime.Now.AddMinutes(10); }
+        if (miNoDim != null) miNoDim.Checked = _suppressDim;
+        if (_suppressDim && _dimmed) RestoreBrightnessIfDimmed();
+    }
+
+    void CheckUpdates(bool manual)
+    {
+        UpdateChecker.CheckAsync(delegate(UpdateInfo info)
+        {
+            try { BeginInvoke(new Action(delegate { ApplyUpdateInfo(info, manual); })); } catch { }
+        });
+    }
+
+    void ApplyUpdateInfo(UpdateInfo info, bool manual)
+    {
+        _update = info;
+        string current = "1.2.0.0";
+        bool newer = info != null && !string.IsNullOrEmpty(info.Version) && UpdateChecker.IsNewer(current, info.Version);
+        if (miUpdate != null)
+        {
+            miUpdate.Visible = newer;
+            miUpdate.Text = string.Format(Texts.T("tray_update"), info != null ? info.Version : "");
+            if (newer && info.AssetUrl != "") miUpdate.Text = string.Format(Texts.T("tray_download"), info.Version);
+        }
+        if (manual || newer)
+        {
+            string msg = newer ? string.Format(Texts.T("msg_upd_found"), info.Version) : Texts.T("msg_upd_none");
+            if (tray != null) tray.ShowBalloonTip(4000, "MacBookToolkit", msg, newer ? ToolTipIcon.Info : ToolTipIcon.None);
+        }
+    }
+
+    void DownloadUpdate()
+    {
+        if (_update == null || string.IsNullOrEmpty(_update.AssetUrl)) return;
+        string url = _update.AssetUrl;
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                Directory.CreateDirectory(dir);
+                string file = Path.Combine(dir, "MacBookToolkit-" + _update.Version + ".exe");
+                using (WebClient wc = new WebClient()) wc.DownloadFile(url, file);
+                try { BeginInvoke(new Action(delegate { tray.ShowBalloonTip(5000, "MacBookToolkit", string.Format(Texts.T("msg_upd_downloaded"), file), ToolTipIcon.Info); })); } catch { }
+                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + file + "\"");
+            }
+            catch { }
+        });
+    }
+
+    // ---------- hotkeys ----------
+    const int HOTKEY_DIM = 0xB001, HOTKEY_TOUCH = 0xB002, HOTKEY_TOP = 0xB003, HOTKEY_NIGHT = 0xB004, HOTKEY_KBD = 0xB005;
+
+    void RegisterHotkeys()
+    {
+        if (!IsHandleCreated) return;
+        try
+        {
+            RegisterHotKey(Handle, HOTKEY_DIM, 0x0003, 0x44);
+            RegisterHotKey(Handle, HOTKEY_TOUCH, 0x0003, 0x54);
+            RegisterHotKey(Handle, HOTKEY_TOP, 0x0003, 0x50);
+            RegisterHotKey(Handle, HOTKEY_NIGHT, 0x0003, 0x4E);
+            RegisterHotKey(Handle, HOTKEY_KBD, 0x0003, 0x4B);
+        }
+        catch { }
+    }
+
+    void UnregisterHotkeys()
+    {
+        if (!IsHandleCreated) return;
+        try
+        {
+            UnregisterHotKey(Handle, HOTKEY_DIM);
+            UnregisterHotKey(Handle, HOTKEY_TOUCH);
+            UnregisterHotKey(Handle, HOTKEY_TOP);
+            UnregisterHotKey(Handle, HOTKEY_NIGHT);
+            UnregisterHotKey(Handle, HOTKEY_KBD);
+        }
+        catch { }
+    }
+
+    void HandleHotkey(int id)
+    {
+        if (id == HOTKEY_DIM) { _loading = true; chkScreen.Checked = !chkScreen.Checked; _loading = false; }
+        else if (id == HOTKEY_TOUCH) { _loading = true; chkTouch.Checked = !chkTouch.Checked; _loading = false; }
+        else if (id == HOTKEY_TOP) ApplyTopMost(!TopMost, true);
+        else if (id == HOTKEY_NIGHT) ToggleNightLight(!_s.NightLight);
+        else if (id == HOTKEY_KBD) ToggleKeyboardLock();
     }
 
     // ---------- language / theme ----------
@@ -713,6 +999,17 @@ public class MainForm : Form
         if (miTopMost != null) miTopMost.Text = Texts.T("tray_topmost");
         if (miAutoStart != null) miAutoStart.Text = Texts.T("tray_autostart");
         if (miExit != null) miExit.Text = Texts.T("tray_exit");
+        if (miNoDim != null) miNoDim.Text = Texts.T("tray_nodim");
+        if (miNight != null) miNight.Text = Texts.T("tray_night");
+        if (miKbdLock != null) miKbdLock.Text = Texts.T("tray_kbdlock");
+        if (miLock != null) miLock.Text = Texts.T("tray_lock");
+        if (miSleep != null) miSleep.Text = Texts.T("tray_sleep");
+        if (miHibernate != null) miHibernate.Text = Texts.T("tray_hibernate");
+        if (miCheckUpd != null) miCheckUpd.Text = Texts.T("tray_checkupd");
+        if (_update != null && miUpdate != null && miUpdate.Visible)
+            miUpdate.Text = string.Format(Texts.T(string.IsNullOrEmpty(_update.AssetUrl) ? "tray_update" : "tray_download"), _update.Version);
+        RefreshBatteryStatus();
+        RefreshDriverStatus();
         _loading = false;
         FitLabels();
         Invalidate(true);
@@ -774,6 +1071,7 @@ public class MainForm : Form
     {
         base.OnHandleCreated(e);
         ApplyTitleBarTheme();
+        RegisterHotkeys();
     }
 
     protected override CreateParams CreateParams
@@ -789,6 +1087,7 @@ public class MainForm : Form
     protected override void WndProc(ref Message m)
     {
         base.WndProc(ref m);
+        if (m.Msg == 0x0312) { HandleHotkey(m.WParam.ToInt32()); return; }
         if (m.Msg == 0x001A || m.Msg == 0x031A || m.Msg == 0x0320)
         {
             if (_s != null && _s.Theme == "system" && IsHandleCreated)
@@ -841,9 +1140,13 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        _brightnessOk = SetBrightness(_s.NormalPct);
+        if (_s.NightLight && _night == null) { _night = new NightLightForm(); _night.Show(); }
+        if (!_s.NightLight && _night != null) { _night.Close(); _night.Dispose(); _night = null; }
+        _profileBattery = IsOnBattery();
+        _brightnessOk = SetBrightness(EffNormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        SyncTrayMenu();
         Program.LogNote("save", "settings saved and applied");
     }
 
@@ -869,6 +1172,9 @@ public class MainForm : Form
         numScreenOff.Value = d.ScreenOffMin;
         chkAutoStart.Checked = d.AutoStart;
         chkTray.Checked = d.ShowTray;
+        chkProfile.Checked = d.ProfileEnabled;
+        chkNight.Checked = d.NightLight;
+        chkAutoUpdate.Checked = d.AutoUpdateCheck;
         _loading = false;
         _s.Save();
         SetAutoStart(_s.AutoStart);
@@ -876,7 +1182,10 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        _brightnessOk = SetBrightness(d.NormalPct);
+        if (_s.NightLight && _night == null) { _night = new NightLightForm(); _night.Show(); }
+        if (!_s.NightLight && _night != null) { _night.Close(); _night.Dispose(); _night = null; }
+        _profileBattery = IsOnBattery();
+        _brightnessOk = SetBrightness(EffNormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
         SyncTrayMenu();
@@ -911,20 +1220,23 @@ public class MainForm : Form
         Calibrate();
         ApplyTitleBarTheme();
         Resize += FormResize;
+        RefreshBatteryStatus();
+        RefreshDriverStatus();
+        if (_s.AutoUpdateCheck) CheckUpdates(false);
     }
 
     void Calibrate()
     {
         _dimmed = false;
         _brightnessTries = 0;
-        _brightnessOk = SetBrightness(_s.NormalPct);
+        _brightnessOk = SetBrightness(EffNormalPct);
         if (_brightnessOk) _brightnessTries = 99;
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
         ApplyTopMost(_s.TopMost, false);
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
-        Program.LogNote("calibrate", "brightness=" + _s.NormalPct + "%; video idle=" +
-            _s.ScreenOffMin + " min; autostart=" + _s.AutoStart + "; topmost=" + _s.TopMost +
+        Program.LogNote("calibrate", "brightness=" + EffNormalPct + "%; video idle=" +
+            EffScreenOffMin + " min; autostart=" + _s.AutoStart + "; topmost=" + _s.TopMost +
             "; theme=" + _s.Theme + "; accent=" + _s.Accent + "; lang=" + _s.Lang);
     }
 
@@ -949,6 +1261,10 @@ public class MainForm : Form
             if (themeWatch != null) { themeWatch.Stop(); themeWatch.Dispose(); themeWatch = null; }
             if (tipTimer != null) { tipTimer.Stop(); tipTimer.Dispose(); tipTimer = null; }
             if (tuneTimer != null) { tuneTimer.Stop(); tuneTimer.Dispose(); tuneTimer = null; }
+            if (batteryTimer != null) { batteryTimer.Stop(); batteryTimer.Dispose(); batteryTimer = null; }
+            if (_night != null) { _night.Close(); _night.Dispose(); _night = null; }
+            _kbdLocked = false;
+            UnregisterHotkeys();
             TipBalloon.HideTip();
             RemoveHooks();
             if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
@@ -964,7 +1280,7 @@ public class MainForm : Form
     {
         try
         {
-            int sec = _s.ScreenOffMin * 60;
+            int sec = EffScreenOffMin * 60;
             Run("powercfg", "/setacvalueindex SCHEME_CURRENT SUB_VIDEO VIDEOIDLE " + sec.ToString());
             Run("powercfg", "/setdcvalueindex SCHEME_CURRENT SUB_VIDEO VIDEOIDLE " + sec.ToString());
             Run("powercfg", "/setactive SCHEME_CURRENT");
@@ -1051,16 +1367,22 @@ public class MainForm : Form
         if (!_brightnessOk && _brightnessTries < 5)
         {
             _brightnessTries++;
-            if (SetBrightness(_s.NormalPct)) { _brightnessOk = true; _dimmed = false; }
+            if (SetBrightness(EffNormalPct)) { _brightnessOk = true; _dimmed = false; }
         }
-        bool wantDim = WantsDim(IdleMs(), _s) && _brightnessOk;
+        if (_suppressDim && DateTime.Now > _suppressUntil) { _suppressDim = false; if (miNoDim != null) miNoDim.Checked = false; }
+        if (_suppressDim)
+        {
+            if (_dimmed && SetBrightness(EffNormalPct)) _dimmed = false;
+            return;
+        }
+        bool wantDim = _s.ScreenEnabled && IdleMs() >= (uint)(EffIdleSec * 1000) && _brightnessOk;
         if (wantDim && !_dimmed)
         {
-            if (SetBrightness(_s.DimPct)) _dimmed = true;
+            if (SetBrightness(EffDimPct)) _dimmed = true;
         }
         else if (!wantDim && _dimmed)
         {
-            if (SetBrightness(_s.NormalPct)) _dimmed = false;
+            if (SetBrightness(EffNormalPct)) _dimmed = false;
         }
     }
 
@@ -1093,6 +1415,7 @@ public class MainForm : Form
                 bool isDown = (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN);
                 bool isUp = (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP);
 
+                if (_kbdLocked && !injected) return (IntPtr)1;
                 if (!injected)
                 {
                     if (isDown) { _lastKeyTick = now; _haveKeyTick = true; }

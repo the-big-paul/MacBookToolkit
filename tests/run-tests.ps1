@@ -9,9 +9,9 @@ if (-not (Test-Path $csc)) { $csc = 'C:\Windows\Microsoft.NET\Framework\v4.0.303
 if (-not (Test-Path $csc)) { throw 'csc.exe not found. .NET Framework 4.x is required.' }
 
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-$refs = @('/reference:System.dll','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Management.dll')
+$refs = @('/reference:System.dll','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Management.dll','/reference:System.Xml.dll')
 
-& $csc /nologo /target:library ('/out:' + (Join-Path $out 'MacBookToolkitLib.dll')) $refs (Join-Path $root 'MacBookToolkit.cs') (Join-Path $root 'ThemeUi.cs') (Join-Path $root 'Strings.cs') (Join-Path $root 'AssemblyInfo.cs')
+& $csc /nologo /target:library ('/out:' + (Join-Path $out 'MacBookToolkitLib.dll')) $refs (Join-Path $root 'MacBookToolkit.cs') (Join-Path $root 'ThemeUi.cs') (Join-Path $root 'Strings.cs') (Join-Path $root 'Features.cs') (Join-Path $root 'AssemblyInfo.cs')
 if ($LASTEXITCODE -ne 0) { throw 'library build failed' }
 
 & $csc /nologo /target:exe ('/out:' + (Join-Path $out 'Tests.exe')) (@(('/reference:' + (Join-Path $out 'MacBookToolkitLib.dll')), '/reference:System.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll') + @((Join-Path $PSScriptRoot 'Tests.cs')))

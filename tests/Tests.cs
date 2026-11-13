@@ -293,7 +293,8 @@ public static class Tests
         string[] keys = {
             "tip_chk_screen","tip_idle","tip_dim","tip_normal","tip_screenoff","tip_chk_touch","tip_block",
             "tip_chk_key","tip_up","tip_down","tip_topmost","tip_theme","tip_accent",
-            "tip_autostart","tip_tray","tip_lang","tip_save","tip_reset","version_tip"
+            "tip_autostart","tip_tray","tip_lang","tip_save","tip_reset",
+            "tip_profile","tip_battery","tip_night","tip_autoupdate","tip_drivers","version_tip"
         };
         foreach (string lang in new string[] { "ru", "uk", "en" })
         {

@@ -349,17 +349,10 @@ public class ThemedCard : Panel, IThemed
                     Links[i].Bounds = new Rectangle(xStart, 0, Math.Max(1, xEnd - xStart), band);
                 }
                 string titleText = full.ToString();
+                Color titleColor = _hoverLink >= 0 ? t.Accent : t.Fore;
                 TextRenderer.DrawText(g, titleText, f,
                     new Rectangle(Ui.Px(14), 0, Width - Ui.Px(28), band),
-                    t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                for (int i = 0; i < Links.Count; i++)
-                {
-                    if (i != _hoverLink || Links[i].Uri == null) continue;
-                    TextRenderer.DrawText(g, Links[i].Text, f, Links[i].Bounds, t.Accent,
-                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                    using (Pen pen = new Pen(t.Accent, Math.Max(1f, Ui.Px(1f))))
-                        g.DrawLine(pen, Links[i].Bounds.X, band - Ui.Px(7), Links[i].Bounds.Right, band - Ui.Px(7));
-                }
+                    titleColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
             }
         }
         else if (!string.IsNullOrEmpty(Title))
