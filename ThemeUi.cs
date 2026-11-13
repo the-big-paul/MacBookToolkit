@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -57,9 +57,13 @@ public static class Ui
 // ---------- Segoe MDL2 icon helper ----------
 public static class Icons
 {
+    static readonly bool _fluent = System.IO.File.Exists(System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", "SegoeIcons.ttf"));
+
     public static Font Font(double px)
     {
-        return new Font("Segoe MDL2 Assets", (float)px, FontStyle.Regular, GraphicsUnit.Pixel);
+        string family = _fluent ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
+        return new Font(family, (float)px, FontStyle.Regular, GraphicsUnit.Pixel);
     }
 
     public static void Draw(Graphics g, string glyph, Rectangle r, Color color, double px)
@@ -299,14 +303,12 @@ public class ThemedCard : Panel, IThemed
         }
         if (!string.IsNullOrEmpty(Title))
         {
-            int band = Ui.Px(32);
-            Rectangle iconRect = new Rectangle(Ui.Px(9), 0, Ui.Px(24), band);
-            Icons.Draw(g, TitleIcon, iconRect, t.Accent, Ui.Px(22));
-            using (Font f = new Font("Segoe UI", 10f, FontStyle.Bold))
+            int band = Ui.Px(30);
+            using (Font f = new Font("Segoe UI", 10.5f, FontStyle.Bold))
             {
                 TextRenderer.DrawText(g, Title, f,
-                    new Rectangle(Ui.Px(39), 0, Width - Ui.Px(49), band),
-                    t.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    new Rectangle(Ui.Px(14), 0, Width - Ui.Px(28), band),
+                    t.Fore, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             }
         }
     }

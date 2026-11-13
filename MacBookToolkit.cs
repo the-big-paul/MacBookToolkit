@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -374,7 +374,7 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(656), Ui.Px(582));
+        ClientSize = new Size(Ui.Px(700), Ui.Px(598));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         tip = new ToolTip();
@@ -386,53 +386,53 @@ public class MainForm : Form
         caption.Title = "MacBookToolkit";
         caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
         caption.VersionTip = Texts.T("version_tip");
-        caption.SetBounds(0, 0, Ui.Px(656), Ui.Px(40));
+        caption.SetBounds(0, 0, Ui.Px(700), Ui.Px(40));
         caption.CloseClick += delegate { Close(); };
         caption.MinimizeClick += delegate { WindowState = FormWindowState.Minimized; };
         caption.VersionClick += delegate { OpenRepository(); };
         Controls.Add(caption);
 
-        cardScreen = Card("sec_display", "\uE7F4", 16, 56, 304, 206);
-        chkScreen = Chk("chk_screen", "\uE706", 14, 34, 288, cardScreen, _s.ScreenEnabled);
-        lblIdle = Lbl("lbl_idle", "\uE823", 14, 68, 200, 26, cardScreen, false, false);
-        numIdle = Spn(216, 68, 80, 1, 300, 1, _s.IdleSec, cardScreen, " с");
-        lblDim = Lbl("lbl_dim", "\uE7F4", 14, 102, 200, 26, cardScreen, false, false);
-        numDim = Spn(216, 102, 80, 1, 100, 1, _s.DimPct, cardScreen, " %");
-        lblNormal = Lbl("lbl_normal", "\uE793", 14, 136, 200, 26, cardScreen, false, false);
-        numNormal = Spn(216, 136, 80, 1, 100, 1, _s.NormalPct, cardScreen, " %");
-        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 170, 200, 26, cardScreen, false, false);
-        numScreenOff = Spn(216, 170, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, " мин");
+        cardScreen = Card("sec_display", "", 16, 52, 328, 208);
+        chkScreen = Chk("chk_screen", "\uE706", 14, 32, 300, cardScreen, _s.ScreenEnabled);
+        lblIdle = Lbl("lbl_idle", "\uE823", 14, 66, 200, 30, cardScreen, false, false);
+        numIdle = Spn(228, 66, 86, 1, 300, 1, _s.IdleSec, cardScreen, " с");
+        lblDim = Lbl("lbl_dim", "\uE793", 14, 100, 200, 30, cardScreen, false, false);
+        numDim = Spn(228, 100, 86, 1, 100, 1, _s.DimPct, cardScreen, " %");
+        lblNormal = Lbl("lbl_normal", "\uE7F4", 14, 134, 200, 30, cardScreen, false, false);
+        numNormal = Spn(228, 134, 86, 1, 100, 1, _s.NormalPct, cardScreen, " %");
+        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 168, 200, 30, cardScreen, false, false);
+        numScreenOff = Spn(228, 168, 86, 1, 60, 1, _s.ScreenOffMin, cardScreen, " мин");
 
-        cardKey = Card("sec_key", "\uE765", 336, 56, 304, 138);
-        chkKey = Chk("chk_key", "\uE765", 14, 34, 288, cardKey, _s.KeyEnabled);
-        lblUp = Lbl("lbl_up", "\uE916", 14, 68, 200, 26, cardKey, false, false);
-        numUp = Spn(216, 68, 80, 0, 200, 5, _s.DebounceUpMs, cardKey, " мс");
-        lblDown = Lbl("lbl_down", "\uE8B9", 14, 102, 200, 26, cardKey, false, false);
-        numDown = Spn(216, 102, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, " мс");
+        cardKey = Card("sec_key", "", 356, 52, 328, 140);
+        chkKey = Chk("chk_key", "\uE765", 14, 32, 300, cardKey, _s.KeyEnabled);
+        lblUp = Lbl("lbl_up", "\uE916", 14, 66, 200, 30, cardKey, false, false);
+        numUp = Spn(228, 66, 86, 0, 200, 5, _s.DebounceUpMs, cardKey, " мс");
+        lblDown = Lbl("lbl_down", "\uE945", 14, 100, 200, 30, cardKey, false, false);
+        numDown = Spn(228, 100, 86, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, " мс");
 
-        cardTouch = Card("sec_touch", "\uE7C9", 16, 274, 304, 104);
-        chkTouch = Chk("chk_touch", "\uE7C9", 14, 34, 288, cardTouch, _s.TouchEnabled);
-        lblBlock = Lbl("lbl_block", "\uE916", 14, 68, 200, 26, cardTouch, false, false);
-        numBlock = Spn(216, 68, 80, 50, 2000, 50, _s.BlockMs, cardTouch, " мс");
+        cardTouch = Card("sec_touch", "", 16, 270, 328, 106);
+        chkTouch = Chk("chk_touch", "\uE7C9", 14, 32, 300, cardTouch, _s.TouchEnabled);
+        lblBlock = Lbl("lbl_block", "\uE8B0", 14, 66, 200, 30, cardTouch, false, false);
+        numBlock = Spn(228, 66, 86, 50, 2000, 50, _s.BlockMs, cardTouch, " мс");
 
-        cardWindow = Card("sec_window", "\uE790", 336, 206, 304, 186);
-        lblTheme = Lbl("lbl_theme", "\uE790", 14, 34, 276, 24, cardWindow, false, false);
-        cbTheme = Sel(14, 60, 276, ThemeItems(), cardWindow);
-        lblAccent = Lbl("lbl_accent", "", 14, 92, 276, 24, cardWindow, false, false);
-        cbAccent = Sel(14, 118, 276, AccentItems(), cardWindow);
+        cardWindow = Card("sec_window", "", 356, 202, 328, 174);
+        lblTheme = Lbl("lbl_theme", "\uE790", 14, 32, 140, 30, cardWindow, false, false);
+        cbTheme = Sel(158, 32, 156, ThemeItems(), cardWindow);
+        lblAccent = Lbl("lbl_accent", "", 14, 66, 140, 30, cardWindow, false, false);
+        cbAccent = Sel(158, 66, 156, AccentItems(), cardWindow);
         cbAccent.ItemImages = AccentSwatches();
-        chkTopMost = Chk("chk_topmost", "\uE718", 14, 150, 276, cardWindow, _s.TopMost);
-
-        cardOptions = Card("sec_options", "\uE9E9", 16, 404, 624, 108);
-        chkAutoStart = Chk("chk_autostart", "\uE7E8", 14, 34, 300, cardOptions, _s.AutoStart);
-        chkTray = Chk("chk_tray", "\uE8A5", 14, 68, 300, cardOptions, _s.ShowTray);
-        lblLang = Lbl("lbl_lang", "\uE774", 330, 34, 146, 26, cardOptions, false, false);
-        cbLang = Sel(480, 34, 130, new string[] { "Русский", "Українська", "English" }, cardOptions);
+        lblLang = Lbl("lbl_lang", "\uE774", 14, 100, 140, 30, cardWindow, false, false);
+        cbLang = Sel(158, 100, 156, new string[] { "Русский", "Українська", "English" }, cardWindow);
         cbLang.ItemImages = new Image[] { Flags.Draw("ru"), Flags.Draw("uk"), Flags.Draw("en") };
-        chkCpuTemp = Chk("chk_cpu_temp", "\uE9CA", 330, 68, 280, cardOptions, _s.ShowCpuTemp);
+        chkTopMost = Chk("chk_topmost", "\uE718", 14, 134, 300, cardWindow, _s.TopMost);
 
-        btnSave = Btn("btn_save", "\uE74E", 16, 524, 304, 42);
-        btnReset = Btn("btn_reset", "\uE72C", 336, 524, 304, 42);
+        cardOptions = Card("sec_options", "", 16, 388, 668, 140);
+        chkAutoStart = Chk("chk_autostart", "\uE7E8", 14, 32, 640, cardOptions, _s.AutoStart);
+        chkTray = Chk("chk_tray", "\uE8A5", 14, 66, 640, cardOptions, _s.ShowTray);
+        chkCpuTemp = Chk("chk_cpu_temp", "\uE9CA", 14, 100, 640, cardOptions, _s.ShowCpuTemp);
+
+        btnSave = Btn("btn_save", "\uE74E", 16, 540, 328, 40);
+        btnReset = Btn("btn_reset", "\uE72C", 356, 540, 328, 40);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
