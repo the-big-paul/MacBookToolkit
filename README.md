@@ -123,7 +123,7 @@ csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
     MacBookToolkit.cs AssemblyInfo.cs
 ```
 
-The result is a single portable `MacBookToolkit.exe` (~54 KB, version 1.1). No
+The result is a single portable `MacBookToolkit.exe` (~58 KB, version 1.1). No
 installer, no dependencies — copy it anywhere and run it.
 
 Logic tests (no hardware needed):
@@ -299,7 +299,7 @@ csc /nologo /target:winexe /win32icon:app.ico /out:MacBookToolkit.exe ^
     MacBookToolkit.cs AssemblyInfo.cs
 ```
 
-На выходе — один портативный `MacBookToolkit.exe` (~54 КБ, версия 1.1). Без
+На выходе — один портативный `MacBookToolkit.exe` (~58 КБ, версия 1.1). Без
 установщика и зависимостей: скопируйте в любое место и запустите.
 
 Логические тесты (железо не нужно):
