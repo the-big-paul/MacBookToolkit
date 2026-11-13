@@ -21,6 +21,14 @@
 <a id="english"></a>
 ## 🇬🇧 English
 
+### 📸 Screenshots
+
+| 🔆 Screen | 🖱️ Touchpad |
+|---|---|
+| ![Screen tab](screenshots/en-screen.png) | ![Touchpad tab](screenshots/en-touchpad.png) |
+| ⌨️ Keyboard | 🔋 Power |
+| ![Keyboard tab](screenshots/en-keyboard.png) | ![Power tab](screenshots/en-power.png) |
+
 ### ✨ Features
 
 #### 🔆 Screen auto-dim
@@ -150,6 +158,14 @@ Keyboard and mouse hooks affect system-wide input. The program is provided
 > нужен — его можно полностью удалить и пользоваться только Windows с драйверами
 > Boot Camp. Это приложение для Windows, а не для macOS, и macOS для работы ему
 > не требуется.
+
+### 📸 Скриншоты
+
+| 🔆 Экран | 🖱️ Тачпад |
+|---|---|
+| ![Вкладка «Экран»](screenshots/ru-screen.png) | ![Вкладка «Тачпад»](screenshots/ru-touchpad.png) |
+| ⌨️ Клавиатура | 🔋 Питание |
+| ![Вкладка «Клавиатура»](screenshots/ru-keyboard.png) | ![Вкладка «Питание»](screenshots/ru-power.png) |
 
 ### ✨ Возможности
 
