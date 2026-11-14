@@ -352,7 +352,6 @@ public class MainForm : Form
         batteryTimer.Interval = 5000;
         batteryTimer.Tick += delegate
         {
-            ApplyProfileIfNeeded();
             if ((DateTime.Now - _lastBatteryRefresh).TotalSeconds >= 60)
             {
                 _lastBatteryRefresh = DateTime.Now;
@@ -491,11 +490,6 @@ public class MainForm : Form
         cardTouch.Links.Add(new CardLink { Text = Texts.T("sec_touch"), Uri = "ms-settings:devices-touchpad" });
         cardOptions.Links.Clear();
         cardOptions.Links.Add(new CardLink { Text = Texts.T("sec_options"), Uri = "ms-settings:" });
-        if (cardSystem != null)
-        {
-            cardSystem.Links.Clear();
-            cardSystem.Links.Add(new CardLink { Text = Texts.T("sec_system"), Uri = "ms-settings:batterysaver" });
-        }
         cardScreen.Invalidate(); cardKey.Invalidate(); cardTouch.Invalidate(); cardOptions.Invalidate();
     }
 
@@ -530,7 +524,7 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(700), Ui.Px(698));
+        ClientSize = new Size(Ui.Px(700), Ui.Px(608));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         caption = new ThemedCaption();
@@ -558,7 +552,7 @@ public class MainForm : Form
         lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 168, 206, 30, cardScreen);
         numScreenOff = Spn(234, 168, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, "unit_min");
 
-        cardKey = Card("sec_key", "", 16, 270, 328, 140);
+        cardKey = Card("sec_key", "", 16, 270, 328, 174);
         lb = Lbl("chk_key", "\uE765", 14, 32, 270, 30, cardKey);
         chkKey = Chk(292, 32, cardKey, _s.KeyEnabled); LinkToggle(lb, chkKey);
         Tip(lb, "tip_chk_key"); Tip(chkKey, "tip_chk_key");
@@ -574,7 +568,7 @@ public class MainForm : Form
         lblBlock = Lbl("lbl_block", "\uE8B0", 14, 66, 206, 30, cardTouch);
         numBlock = Spn(234, 66, 80, 50, 2000, 50, _s.BlockMs, cardTouch, "unit_ms");
 
-        cardOptions = Card("sec_options", "", 356, 168, 328, 242);
+        cardOptions = Card("sec_options", "", 356, 168, 328, 276);
         lblTheme = Lbl("lbl_theme", "\uE790", 14, 32, 140, 30, cardOptions);
         cbTheme = Sel(158, 32, 156, ThemeItems(), cardOptions);
         lblAccent = Lbl("lbl_accent", "", 14, 66, 140, 30, cardOptions);
@@ -593,27 +587,23 @@ public class MainForm : Form
         lb = Lbl("chk_tray", "\uE8A5", 14, 202, 270, 30, cardOptions);
         chkTray = Chk(292, 202, cardOptions, _s.ShowTray); LinkToggle(lb, chkTray);
         Tip(lb, "tip_tray"); Tip(chkTray, "tip_tray");
+        lb = Lbl("chk_autoupdate", "\uE72C", 14, 236, 270, 30, cardOptions);
+        chkAutoUpdate = Chk(292, 236, cardOptions, _s.AutoUpdateCheck); LinkToggle(lb, chkAutoUpdate);
+        Tip(lb, "tip_autoupdate"); Tip(chkAutoUpdate, "tip_autoupdate");
         ApplyCardLinks();
 
-        cardSystem = Card("sec_system", "", 16, 422, 668, 208);
-        lb = Lbl("chk_profile", "\uE945", 14, 32, 270, 30, cardSystem);
-        chkProfile = Chk(628, 32, cardSystem, _s.ProfileEnabled); LinkToggle(lb, chkProfile);
-        Tip(lb, "tip_profile"); Tip(chkProfile, "tip_profile");
-        lblBattery = Lbl("status_battery_na", "\uE7E8", 14, 66, 600, 30, cardSystem);
-        _textKeys.Remove(lblBattery);
-        Tip(lblBattery, "tip_battery");
-        lb = Lbl("chk_night", "\uE708", 14, 100, 270, 30, cardSystem);
-        chkNight = Chk(628, 100, cardSystem, _s.NightLight); LinkToggle(lb, chkNight);
-        Tip(lb, "tip_night"); Tip(chkNight, "tip_night");
-        lb = Lbl("chk_autoupdate", "\uE72C", 14, 134, 270, 30, cardSystem);
-        chkAutoUpdate = Chk(628, 134, cardSystem, _s.AutoUpdateCheck); LinkToggle(lb, chkAutoUpdate);
-        Tip(lb, "tip_autoupdate"); Tip(chkAutoUpdate, "tip_autoupdate");
-        lblDrivers = Lbl("status_drivers_na", "\uE713", 14, 168, 600, 30, cardSystem);
+        ThemedCard cardStatus = new ThemedCard();
+        cardStatus.SetBounds(Ui.Px(16), Ui.Px(508), Ui.Px(668), Ui.Px(84));
+        Controls.Add(cardStatus);
+        lblDrivers = Lbl("status_drivers_na", "\uE713", 14, 8, 620, 30, cardStatus);
         _textKeys.Remove(lblDrivers);
         Tip(lblDrivers, "tip_drivers");
+        lblBattery = Lbl("status_battery_na", "\uE7E8", 14, 42, 620, 30, cardStatus);
+        _textKeys.Remove(lblBattery);
+        Tip(lblBattery, "tip_battery");
 
-        btnSave = Btn("btn_save", "\uE74E", 16, 642, 328, 40);
-        btnReset = Btn("btn_reset", "\uE72C", 356, 642, 328, 40);
+        btnSave = Btn("btn_save", "\uE74E", 16, 456, 328, 40);
+        btnReset = Btn("btn_reset", "\uE72C", 356, 456, 328, 40);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
@@ -642,7 +632,6 @@ public class MainForm : Form
         Tip(btnSave, "tip_save"); Tip(btnReset, "tip_reset");
 
         RefreshAccentVisuals();
-        _profileBattery = IsOnBattery();
         RefreshBatteryStatus();
         RefreshDriverStatus();
         BuildTray();
@@ -700,8 +689,6 @@ public class MainForm : Form
 
         miNoDim = new MenuItem(Texts.T("tray_nodim"));
         miNoDim.Click += delegate { ToggleSuppressDim(); };
-        miNight = new MenuItem(Texts.T("tray_night"));
-        miNight.Click += delegate { ToggleNightLight(!_s.NightLight); };
         miKbdLock = new MenuItem(Texts.T("tray_kbdlock"));
         miKbdLock.Click += delegate { ToggleKeyboardLock(); };
 
@@ -733,7 +720,6 @@ public class MainForm : Form
         cm.MenuItems.Add(miAutoStart);
         cm.MenuItems.Add(new MenuItem("-"));
         cm.MenuItems.Add(miNoDim);
-        cm.MenuItems.Add(miNight);
         cm.MenuItems.Add(miKbdLock);
         cm.MenuItems.Add(new MenuItem("-"));
         cm.MenuItems.Add(miLock);
@@ -759,7 +745,6 @@ public class MainForm : Form
     {
         if (miTopMost != null) miTopMost.Checked = TopMost;
         if (miAutoStart != null) miAutoStart.Checked = _s.AutoStart;
-        if (miNight != null) miNight.Checked = _s.NightLight;
         if (miKbdLock != null) miKbdLock.Checked = _kbdLocked;
         if (miNoDim != null) miNoDim.Checked = _suppressDim;
     }
@@ -812,7 +797,7 @@ public class MainForm : Form
         {
             int c = BatteryInfo.WmiCharge();
             lblBattery.Text = Texts.T("status_battery_na");
-            if (c > 0) lblBattery.Text = string.Format(Texts.T("status_battery"), c, 0, 0);
+            if (c > 0) lblBattery.Text = string.Format(Texts.T("status_battery"), c, "—", "—");
         }
         if (miBattery != null) miBattery.Text = lblBattery.Text;
         lblBattery.FitContent();
@@ -918,7 +903,7 @@ public class MainForm : Form
     }
 
     // ---------- hotkeys ----------
-    const int HOTKEY_DIM = 0xB001, HOTKEY_TOUCH = 0xB002, HOTKEY_TOP = 0xB003, HOTKEY_NIGHT = 0xB004, HOTKEY_KBD = 0xB005;
+    const int HOTKEY_DIM = 0xB001, HOTKEY_TOUCH = 0xB002, HOTKEY_TOP = 0xB003, HOTKEY_KBD = 0xB005;
 
     void RegisterHotkeys()
     {
@@ -928,7 +913,6 @@ public class MainForm : Form
             RegisterHotKey(Handle, HOTKEY_DIM, 0x0003, 0x44);
             RegisterHotKey(Handle, HOTKEY_TOUCH, 0x0003, 0x54);
             RegisterHotKey(Handle, HOTKEY_TOP, 0x0003, 0x50);
-            RegisterHotKey(Handle, HOTKEY_NIGHT, 0x0003, 0x4E);
             RegisterHotKey(Handle, HOTKEY_KBD, 0x0003, 0x4B);
         }
         catch { }
@@ -942,7 +926,6 @@ public class MainForm : Form
             UnregisterHotKey(Handle, HOTKEY_DIM);
             UnregisterHotKey(Handle, HOTKEY_TOUCH);
             UnregisterHotKey(Handle, HOTKEY_TOP);
-            UnregisterHotKey(Handle, HOTKEY_NIGHT);
             UnregisterHotKey(Handle, HOTKEY_KBD);
         }
         catch { }
@@ -953,7 +936,6 @@ public class MainForm : Form
         if (id == HOTKEY_DIM) { _loading = true; chkScreen.Checked = !chkScreen.Checked; _loading = false; }
         else if (id == HOTKEY_TOUCH) { _loading = true; chkTouch.Checked = !chkTouch.Checked; _loading = false; }
         else if (id == HOTKEY_TOP) ApplyTopMost(!TopMost, true);
-        else if (id == HOTKEY_NIGHT) ToggleNightLight(!_s.NightLight);
         else if (id == HOTKEY_KBD) ToggleKeyboardLock();
     }
 
@@ -1000,7 +982,6 @@ public class MainForm : Form
         if (miAutoStart != null) miAutoStart.Text = Texts.T("tray_autostart");
         if (miExit != null) miExit.Text = Texts.T("tray_exit");
         if (miNoDim != null) miNoDim.Text = Texts.T("tray_nodim");
-        if (miNight != null) miNight.Text = Texts.T("tray_night");
         if (miKbdLock != null) miKbdLock.Text = Texts.T("tray_kbdlock");
         if (miLock != null) miLock.Text = Texts.T("tray_lock");
         if (miSleep != null) miSleep.Text = Texts.T("tray_sleep");
@@ -1133,6 +1114,7 @@ public class MainForm : Form
         _s.ShowTray = chkTray.Checked;
         _s.TopMost = chkTopMost.Checked;
         _s.Accent = ThemeManager.AccentKeys[Math.Max(0, cbAccent.SelectedIndex)];
+        _s.AutoUpdateCheck = chkAutoUpdate.Checked;
         if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
         _s.Save();
         SetAutoStart(_s.AutoStart);
@@ -1140,9 +1122,6 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        if (_s.NightLight && _night == null) { _night = new NightLightForm(); _night.Show(); }
-        if (!_s.NightLight && _night != null) { _night.Close(); _night.Dispose(); _night = null; }
-        _profileBattery = IsOnBattery();
         _brightnessOk = SetBrightness(EffNormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
@@ -1172,8 +1151,6 @@ public class MainForm : Form
         numScreenOff.Value = d.ScreenOffMin;
         chkAutoStart.Checked = d.AutoStart;
         chkTray.Checked = d.ShowTray;
-        chkProfile.Checked = d.ProfileEnabled;
-        chkNight.Checked = d.NightLight;
         chkAutoUpdate.Checked = d.AutoUpdateCheck;
         _loading = false;
         _s.Save();
@@ -1182,9 +1159,6 @@ public class MainForm : Form
         ApplyTopMost(_s.TopMost, false);
         ApplyThemeNow();
         RefreshAccentVisuals();
-        if (_s.NightLight && _night == null) { _night = new NightLightForm(); _night.Show(); }
-        if (!_s.NightLight && _night != null) { _night.Close(); _night.Dispose(); _night = null; }
-        _profileBattery = IsOnBattery();
         _brightnessOk = SetBrightness(EffNormalPct);
         _dimmed = !_brightnessOk;
         ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });

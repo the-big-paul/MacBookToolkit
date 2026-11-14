@@ -6,34 +6,21 @@ using System.IO;
 
 public class IconGen
 {
-    static readonly Color Blue = Color.FromArgb(0, 103, 192);
-    static readonly Color Plus = Color.FromArgb(156, 201, 245);
-    static readonly Color White = Color.White;
-
     static void Main(string[] args)
     {
         string dir = args.Length > 0 ? args[0] : ".";
-        string outIco = Path.Combine(dir, "app.ico");
+        Bitmap baseBmp = LoadLargest(Path.Combine(dir, "app-base.ico"));
         int[] sizes = new int[] { 16, 20, 24, 32, 40, 48, 64, 128, 256 };
+        Bitmap letters256 = BuildLetters(baseBmp);
+        Bitmap outline256 = BuildOutline(letters256, 2);
         Bitmap[] frames = new Bitmap[sizes.Length];
-        for (int i = 0; i < sizes.Length; i++) frames[i] = Draw(sizes[i]);
-        WriteIco(outIco, frames, sizes);
+        for (int i = 0; i < sizes.Length; i++) frames[i] = Compose(baseBmp, outline256, letters256, sizes[i]);
+        WriteIco(Path.Combine(dir, "app.ico"), frames, sizes);
         WritePreview(frames, sizes, Path.Combine(dir, "review", "icon-preview.png"));
         Console.WriteLine("icons written");
     }
 
-    static Font MakeFont(float px)
-    {
-        string[] names = new string[] { "Segoe UI Black", "Arial Black", "Segoe UI" };
-        foreach (string n in names)
-        {
-            try { return new Font(n, px, FontStyle.Bold, GraphicsUnit.Pixel); }
-            catch { }
-        }
-        return new Font(FontFamily.GenericSansSerif, px, FontStyle.Bold, GraphicsUnit.Pixel);
-    }
-
-    static Bitmap Draw(int s)
+    static Bitmap Compose(Bitmap baseBmp, Bitmap outline, Bitmap letters, int s)
     {
         Bitmap bmp = new Bitmap(s, s);
         using (Graphics g = Graphics.FromImage(bmp))
@@ -42,66 +29,100 @@ public class IconGen
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Color.Transparent);
-
-            RectangleF rr = new RectangleF(0, 0, s, s);
-            using (GraphicsPath bg = Round(rr, s * 0.18f))
-            using (SolidBrush b = new SolidBrush(Blue)) g.FillPath(b, bg);
-
-            int tiny = s <= 20 ? 1 : 0;
-            // gear badge top-right (behind the letters)
-            float d = s * (tiny == 1 ? 0.52f : 0.50f);
-            float cx = s - d / 2 - s * 0.01f, cy = d / 2 + s * 0.01f;
-            RectangleF circle = new RectangleF(cx - d / 2, cy - d / 2, d, d);
-            using (SolidBrush w = new SolidBrush(White)) g.FillEllipse(w, circle);
-            using (Pen pen = new Pen(Blue, Math.Max(1f, s * 0.012f))) g.DrawEllipse(pen, circle);
-            float gearPx = d * 0.62f;
-            try
-            {
-                using (FontFamily fam = new FontFamily("Segoe Fluent Icons"))
-                using (Font gf = new Font(fam, gearPx, FontStyle.Regular, GraphicsUnit.Pixel))
-                using (StringFormat sf = new StringFormat())
-                {
-                    sf.Alignment = StringAlignment.Center;
-                    sf.LineAlignment = StringAlignment.Center;
-                    using (SolidBrush b = new SolidBrush(Blue)) g.DrawString("\uE713", gf, b, circle, sf);
-                }
-            }
-            catch { }
-
-            // letter M (on top of the gear if they overlap)
-            float mpx = s * 0.66f;
-            using (Font mf = MakeFont(mpx))
-            {
-                StringFormat sf = new StringFormat();
-                sf.Alignment = StringAlignment.Center;
-                sf.LineAlignment = StringAlignment.Center;
-                RectangleF mr = new RectangleF(s * 0.05f, s * 0.18f, s * 0.62f, s * 0.64f);
-                using (SolidBrush wb = new SolidBrush(White)) g.DrawString("M", mf, wb, mr, sf);
-            }
-
-            // light-blue plus at the right
-            float bar = s * 0.05f;
-            float plen = s * 0.17f;
-            float px = s * 0.74f, py = s * 0.52f;
-            using (SolidBrush pb = new SolidBrush(Plus))
-            {
-                g.FillRectangle(pb, px, py - bar / 2, plen, bar);
-                g.FillRectangle(pb, px + plen / 2 - bar / 2, py - plen / 2, bar, plen);
-            }
+            g.DrawImage(baseBmp, new Rectangle(0, 0, s, s));
+            DrawGear(g, s);
+            g.DrawImage(outline, new Rectangle(0, 0, s, s));
+            g.DrawImage(letters, new Rectangle(0, 0, s, s));
         }
         return bmp;
     }
 
-    static GraphicsPath Round(RectangleF r, float radius)
+    static void DrawGear(Graphics g, int s)
     {
-        float dd = radius * 2;
-        GraphicsPath p = new GraphicsPath();
-        p.AddArc(r.X, r.Y, dd, dd, 180, 90);
-        p.AddArc(r.Right - dd, r.Y, dd, dd, 270, 90);
-        p.AddArc(r.Right - dd, r.Bottom - dd, dd, dd, 0, 90);
-        p.AddArc(r.X, r.Bottom - dd, dd, dd, 90, 90);
-        p.CloseFigure();
-        return p;
+        float d = s * 0.42f;
+        float margin = s * 0.012f;
+        RectangleF r = new RectangleF(s - d - margin, margin, d, d);
+        Color dark = Color.FromArgb(6, 32, 58);
+        try
+        {
+            using (FontFamily fam = new FontFamily("Segoe Fluent Icons"))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Center;
+                sf.LineAlignment = StringAlignment.Center;
+                using (Font white = new Font(fam, d * 0.70f, FontStyle.Regular, GraphicsUnit.Pixel))
+                using (Font darkFont = new Font(fam, d * 0.60f, FontStyle.Regular, GraphicsUnit.Pixel))
+                using (SolidBrush wb = new SolidBrush(Color.FromArgb(235, 255, 255, 255)))
+                using (SolidBrush db = new SolidBrush(dark))
+                {
+                    g.DrawString("\uE713", white, wb, r, sf);
+                    g.DrawString("\uE713", darkFont, db, r, sf);
+                }
+            }
+        }
+        catch { }
+    }
+
+    static Bitmap BuildLetters(Bitmap src)
+    {
+        Bitmap layer = new Bitmap(src.Width, src.Height);
+        for (int y = 0; y < src.Height; y++)
+        {
+            for (int x = 0; x < src.Width; x++)
+            {
+                Color c = src.GetPixel(x, y);
+                bool white = c.R > 210 && c.G > 210 && c.B > 210;
+                bool lightBlue = c.B > 185 && c.G > 135 && c.R > 80 && c.R < 235;
+                if (white || lightBlue) layer.SetPixel(x, y, c);
+            }
+        }
+        return layer;
+    }
+
+    static Bitmap BuildOutline(Bitmap letters, int radius)
+    {
+        Bitmap outline = new Bitmap(letters.Width, letters.Height);
+        Color dark = Color.FromArgb(6, 32, 58);
+        for (int y = 0; y < letters.Height; y++)
+        {
+            for (int x = 0; x < letters.Width; x++)
+            {
+                bool edge = false;
+                for (int dy = -radius; dy <= radius && !edge; dy++)
+                {
+                    for (int dx = -radius; dx <= radius; dx++)
+                    {
+                        if (dx * dx + dy * dy > radius * radius) continue;
+                        int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= letters.Width || ny >= letters.Height) continue;
+                        if (letters.GetPixel(nx, ny).A > 0) { edge = true; break; }
+                    }
+                }
+                if (edge) outline.SetPixel(x, y, dark);
+            }
+        }
+        return outline;
+    }
+
+    static Bitmap LoadLargest(string path)
+    {
+        byte[] all = File.ReadAllBytes(path);
+        int count = BitConverter.ToUInt16(all, 4);
+        int best = -1, bestSize = -1;
+        for (int i = 0; i < count; i++)
+        {
+            int o = 6 + i * 16;
+            int w = all[o]; if (w == 0) w = 256;
+            if (w > bestSize) { bestSize = w; best = i; }
+        }
+        int e = 6 + best * 16;
+        uint len = BitConverter.ToUInt32(all, e + 8);
+        uint off = BitConverter.ToUInt32(all, e + 12);
+        using (MemoryStream ms = new MemoryStream(all, (int)off, (int)len, false))
+        using (Image img = Image.FromStream(ms))
+        {
+            return new Bitmap(img);
+        }
     }
 
     static void WriteIco(string path, Bitmap[] frames, int[] sizes)
@@ -134,7 +155,6 @@ public class IconGen
         using (Bitmap bmp = new Bitmap(w, h))
         using (Graphics g = Graphics.FromImage(bmp))
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.FromArgb(243, 243, 243));
             using (SolidBrush dark = new SolidBrush(Color.FromArgb(32, 32, 32))) g.FillRectangle(dark, 0, h / 2, w, h / 2);
             int x = 20;
