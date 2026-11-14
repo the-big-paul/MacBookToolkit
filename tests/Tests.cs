@@ -430,10 +430,10 @@ public static class Tests
     static void TestVersion()
     {
         Assembly asm = typeof(MainForm).Assembly;
-        Check("assembly version 1.2.0.0", asm.GetName().Version.ToString() == "1.2.0.0", asm.GetName().Version.ToString());
+        Check("assembly version 1.3.0.0", asm.GetName().Version.ToString() == "1.3.0.0", asm.GetName().Version.ToString());
         object[] fv = asm.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), false);
-        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.2.0.0", "");
+        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.3.0.0", "");
         object[] iv = asm.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false);
-        Check("informational version 1.2", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.2", "");
+        Check("informational version 1.3", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.3", "");
     }
 }
