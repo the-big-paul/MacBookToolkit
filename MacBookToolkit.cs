@@ -296,8 +296,9 @@ public class MainForm : Form
     ThemedSelect cbLang, cbTheme, cbAccent;
     ThemedButton btnSave, btnReset;
     NotifyIcon tray;
-    MenuItem miShow, miTopMost, miAutoStart, miExit;
-    MenuItem miNoDim, miLock, miSleep, miHibernate, miNight, miKbdLock, miCheckUpd, miUpdate, miBattery;
+    ToolStripMenuItem miShow, miTopMost, miAutoStart, miExit;
+    ToolStripMenuItem miNoDim, miLock, miSleep, miHibernate, miNight, miKbdLock, miCheckUpd, miUpdate, miBattery;
+    ContextMenuStrip cms;
     System.Windows.Forms.Timer idleTimer;
     System.Windows.Forms.Timer themeWatch;
     System.Windows.Forms.Timer tipTimer;
@@ -524,7 +525,7 @@ public class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(Ui.Px(700), Ui.Px(608));
+        ClientSize = new Size(Ui.Px(700), Ui.Px(548));
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         caption = new ThemedCaption();
@@ -592,15 +593,22 @@ public class MainForm : Form
         Tip(lb, "tip_autoupdate"); Tip(chkAutoUpdate, "tip_autoupdate");
         ApplyCardLinks();
 
-        ThemedCard cardStatus = new ThemedCard();
-        cardStatus.SetBounds(Ui.Px(16), Ui.Px(508), Ui.Px(668), Ui.Px(84));
-        Controls.Add(cardStatus);
-        lblDrivers = Lbl("status_drivers_na", "\uE713", 14, 8, 620, 30, cardStatus);
-        _textKeys.Remove(lblDrivers);
-        Tip(lblDrivers, "tip_drivers");
-        lblBattery = Lbl("status_battery_na", "\uE7E8", 14, 42, 620, 30, cardStatus);
-        _textKeys.Remove(lblBattery);
+        lblBattery = new ThemedLabel();
+        lblBattery.Muted = true;
+        lblBattery.Font = new Font(Font.FontFamily, Font.Size - 1f);
+        lblBattery.MaxWidth = (int)Ui.Px(420);
+        lblBattery.Text = Texts.T("status_battery_na");
+        lblBattery.SetBounds(Ui.Px(16), Ui.Px(508), Ui.Px(420), Ui.Px(24));
+        Controls.Add(lblBattery);
         Tip(lblBattery, "tip_battery");
+        lblDrivers = new ThemedLabel();
+        lblDrivers.Muted = true;
+        lblDrivers.Font = new Font(Font.FontFamily, Font.Size - 1f);
+        lblDrivers.MaxWidth = (int)Ui.Px(320);
+        lblDrivers.Text = Texts.T("status_drivers_na");
+        lblDrivers.SetBounds(Ui.Px(700 - 16 - 200), Ui.Px(508), Ui.Px(200), Ui.Px(24));
+        Controls.Add(lblDrivers);
+        Tip(lblDrivers, "tip_drivers");
 
         btnSave = Btn("btn_save", "\uE74E", 16, 456, 328, 40);
         btnReset = Btn("btn_reset", "\uE72C", 356, 456, 328, 40);
@@ -670,12 +678,16 @@ public class MainForm : Form
         tray = new NotifyIcon();
         tray.Icon = this.Icon != null ? this.Icon : SystemIcons.Application;
         tray.Text = "MacBookToolkit";
-        ContextMenu cm = new ContextMenu();
-        miShow = new MenuItem(Texts.T("tray_show"));
+        cms = new ContextMenuStrip();
+        cms.ShowCheckMargin = true;
+        cms.ShowImageMargin = false;
+        cms.Font = Font;
+        cms.Padding = new Padding(0, 4, 0, 4);
+        miShow = new ToolStripMenuItem(Texts.T("tray_show"));
         miShow.Click += delegate { ShowFromTray(); };
-        miTopMost = new MenuItem(Texts.T("tray_topmost"));
+        miTopMost = new ToolStripMenuItem(Texts.T("tray_topmost"));
         miTopMost.Click += delegate { ApplyTopMost(!TopMost, true); };
-        miAutoStart = new MenuItem(Texts.T("tray_autostart"));
+        miAutoStart = new ToolStripMenuItem(Texts.T("tray_autostart"));
         miAutoStart.Click += delegate
         {
             _s.AutoStart = !_s.AutoStart;
@@ -684,26 +696,26 @@ public class MainForm : Form
             _loading = true; chkAutoStart.Checked = _s.AutoStart; _loading = false;
             SyncTrayMenu();
         };
-        miExit = new MenuItem(Texts.T("tray_exit"));
+        miExit = new ToolStripMenuItem(Texts.T("tray_exit"));
         miExit.Click += ExitClick;
 
-        miNoDim = new MenuItem(Texts.T("tray_nodim"));
+        miNoDim = new ToolStripMenuItem(Texts.T("tray_nodim"));
         miNoDim.Click += delegate { ToggleSuppressDim(); };
-        miKbdLock = new MenuItem(Texts.T("tray_kbdlock"));
+        miKbdLock = new ToolStripMenuItem(Texts.T("tray_kbdlock"));
         miKbdLock.Click += delegate { ToggleKeyboardLock(); };
 
-        miLock = new MenuItem(Texts.T("tray_lock"));
+        miLock = new ToolStripMenuItem(Texts.T("tray_lock"));
         miLock.Click += delegate { QuickActions.Lock(); };
-        miSleep = new MenuItem(Texts.T("tray_sleep"));
+        miSleep = new ToolStripMenuItem(Texts.T("tray_sleep"));
         miSleep.Click += delegate { QuickActions.Sleep(); };
-        miHibernate = new MenuItem(Texts.T("tray_hibernate"));
+        miHibernate = new ToolStripMenuItem(Texts.T("tray_hibernate"));
         miHibernate.Click += delegate { QuickActions.Hibernate(); };
 
-        miBattery = new MenuItem(Texts.T("status_battery_na"));
+        miBattery = new ToolStripMenuItem(Texts.T("status_battery_na"));
         miBattery.Enabled = false;
-        miCheckUpd = new MenuItem(Texts.T("tray_checkupd"));
+        miCheckUpd = new ToolStripMenuItem(Texts.T("tray_checkupd"));
         miCheckUpd.Click += delegate { CheckUpdates(true); };
-        miUpdate = new MenuItem(Texts.T("tray_update").Replace("{0}", "").Trim());
+        miUpdate = new ToolStripMenuItem(Texts.T("tray_update").Replace("{0}", "").Trim());
         miUpdate.Visible = false;
         miUpdate.Click += delegate
         {
@@ -715,30 +727,41 @@ public class MainForm : Form
             }
         };
 
-        cm.MenuItems.Add(miShow);
-        cm.MenuItems.Add(miTopMost);
-        cm.MenuItems.Add(miAutoStart);
-        cm.MenuItems.Add(new MenuItem("-"));
-        cm.MenuItems.Add(miNoDim);
-        cm.MenuItems.Add(miKbdLock);
-        cm.MenuItems.Add(new MenuItem("-"));
-        cm.MenuItems.Add(miLock);
-        cm.MenuItems.Add(miSleep);
-        cm.MenuItems.Add(miHibernate);
-        cm.MenuItems.Add(new MenuItem("-"));
-        cm.MenuItems.Add(miBattery);
-        cm.MenuItems.Add(miCheckUpd);
-        cm.MenuItems.Add(miUpdate);
-        cm.MenuItems.Add(new MenuItem("-"));
-        cm.MenuItems.Add(miExit);
-        tray.ContextMenu = cm;
+        cms.Items.Add(miShow);
+        cms.Items.Add(miTopMost);
+        cms.Items.Add(miAutoStart);
+        cms.Items.Add(new ToolStripSeparator());
+        cms.Items.Add(miNoDim);
+        cms.Items.Add(miKbdLock);
+        cms.Items.Add(new ToolStripSeparator());
+        cms.Items.Add(miLock);
+        cms.Items.Add(miSleep);
+        cms.Items.Add(miHibernate);
+        cms.Items.Add(new ToolStripSeparator());
+        cms.Items.Add(miBattery);
+        cms.Items.Add(miCheckUpd);
+        cms.Items.Add(miUpdate);
+        cms.Items.Add(new ToolStripSeparator());
+        cms.Items.Add(miExit);
+        tray.ContextMenuStrip = cms;
         tray.MouseClick += delegate(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) ShowFromTray();
         };
         tray.DoubleClick += delegate { ShowFromTray(); };
         tray.Visible = _s.ShowTray;
+        ApplyTrayTheme();
         SyncTrayMenu();
+    }
+
+    void ApplyTrayTheme()
+    {
+        if (cms == null) return;
+        ThemeColors t = _theme != null ? _theme : ThemeManager.Build(false);
+        cms.BackColor = t.Card;
+        cms.ForeColor = t.Fore;
+        cms.Renderer = new ThemedMenuRenderer(t);
+        foreach (ToolStripItem item in cms.Items) item.ForeColor = t.Fore;
     }
 
     void SyncTrayMenu()
@@ -778,6 +801,24 @@ public class MainForm : Form
     int EffNormalPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? 60 : _s.NormalPct; } }
     int EffScreenOffMin { get { return (_s.ProfileEnabled && IsOnBattery()) ? 5 : _s.ScreenOffMin; } }
 
+    void LayoutStatusRow()
+    {
+        if (lblBattery != null)
+        {
+            lblBattery.FitContent();
+            lblBattery.Left = Ui.Px(16);
+            lblBattery.Top = Ui.Px(508);
+            lblBattery.Height = Ui.Px(24);
+        }
+        if (lblDrivers != null)
+        {
+            lblDrivers.FitContent();
+            lblDrivers.Left = ClientSize.Width - Ui.Px(16) - lblDrivers.Width;
+            lblDrivers.Top = Ui.Px(508);
+            lblDrivers.Height = Ui.Px(24);
+        }
+    }
+
     void RefreshBatteryStatus()
     {
         if (lblBattery == null) return;
@@ -785,7 +826,7 @@ public class MainForm : Form
         if (BatteryInfo.TryRead(out design, out full, out cycles, out charge))
         {
             int wear = BatteryInfo.WearPercent(design, full);
-            string cyc = cycles > 0 ? cycles.ToString() : "—";
+            string cyc = cycles.ToString();
             lblBattery.Text = string.Format(Texts.T("status_battery"), charge, wear, cyc);
             if (!_warnedWear && wear >= 20)
             {
@@ -800,7 +841,7 @@ public class MainForm : Form
             if (c > 0) lblBattery.Text = string.Format(Texts.T("status_battery"), c, "—", "—");
         }
         if (miBattery != null) miBattery.Text = lblBattery.Text;
-        lblBattery.FitContent();
+        LayoutStatusRow();
     }
 
     void RefreshDriverStatus()
@@ -808,7 +849,7 @@ public class MainForm : Form
         if (lblDrivers == null) return;
         bool ok = BootCampCheck.DriversPresent();
         lblDrivers.Text = Texts.T(ok ? "status_drivers_ok" : "status_drivers_na");
-        lblDrivers.FitContent();
+        LayoutStatusRow();
         if (!ok && !_warnedDrivers)
         {
             _warnedDrivers = true;
@@ -991,6 +1032,7 @@ public class MainForm : Form
             miUpdate.Text = string.Format(Texts.T(string.IsNullOrEmpty(_update.AssetUrl) ? "tray_update" : "tray_download"), _update.Version);
         RefreshBatteryStatus();
         RefreshDriverStatus();
+        LayoutStatusRow();
         _loading = false;
         FitLabels();
         Invalidate(true);
@@ -1028,6 +1070,7 @@ public class MainForm : Form
     {
         _theme = ThemeManager.Resolve(_s.Theme, _s.Accent);
         ThemeManager.ApplyTheme(this, _theme);
+        ApplyTrayTheme();
         RefreshAccentVisuals();
         ApplyTitleBarTheme();
         Invalidate(true);

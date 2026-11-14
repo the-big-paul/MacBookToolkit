@@ -1184,6 +1184,7 @@ public class ThemedButton : Button, IThemed
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         ThemeColors t = _t != null ? _t : ThemeManager.Build(false);
+        using (SolidBrush bg = new SolidBrush(_surface)) g.FillRectangle(bg, ClientRectangle);
         Color back, fore, border;
         if (Secondary)
         {
@@ -1342,5 +1343,70 @@ public class TipBalloon : Form
         TextRenderer.DrawText(g, _text, Font,
             new Rectangle(Ui.Px(12), Ui.Px(9), Width - Ui.Px(24), Height - Ui.Px(18)),
             _t.Fore, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.Left);
+    }
+}
+
+// ---------- themed tray menu renderer ----------
+public class ThemedMenuRenderer : ToolStripRenderer
+{
+    ThemeColors _t;
+    public ThemedMenuRenderer(ThemeColors t) { _t = t; }
+
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+    {
+        using (SolidBrush b = new SolidBrush(_t.Card)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+    }
+
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+    {
+        using (Pen p = new Pen(_t.Border)) e.Graphics.DrawRectangle(p, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+    }
+
+    protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+    {
+        using (SolidBrush b = new SolidBrush(_t.Card)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+    }
+
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+    {
+        ToolStripMenuItem mi = e.Item as ToolStripMenuItem;
+        if (mi == null) return;
+        bool hot = mi.Selected || mi.Pressed;
+        using (SolidBrush b = new SolidBrush(hot ? _t.SelBack : _t.Card))
+            e.Graphics.FillRectangle(b, new Rectangle(2, 0, e.Item.Width - 4, e.Item.Height));
+        if (hot)
+        {
+            using (Pen p = new Pen(_t.Accent))
+                e.Graphics.DrawRectangle(p, 2, 0, e.Item.Width - 5, e.Item.Height - 1);
+        }
+    }
+
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        e.TextColor = e.Item.Enabled ? _t.Fore : _t.Sub;
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+    {
+        int y = e.Item.Height / 2;
+        using (Pen p = new Pen(_t.Border)) e.Graphics.DrawLine(p, 28, y, e.Item.Width - 6, y);
+    }
+
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        int x = e.ImageRectangle.Left + 5;
+        int y = e.ImageRectangle.Top + e.ImageRectangle.Height / 2;
+        using (Pen p = new Pen(_t.Accent, Math.Max(1.6f, Ui.Px(1.6f))))
+        {
+            p.StartCap = LineCap.Round;
+            p.EndCap = LineCap.Round;
+            g.DrawLines(p, new Point[] {
+                new Point(x, y),
+                new Point(x + Ui.Px(4), y + Ui.Px(4)),
+                new Point(x + Ui.Px(11), y - Ui.Px(5))
+            });
+        }
     }
 }

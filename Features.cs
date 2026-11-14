@@ -31,7 +31,7 @@ public static class BatteryInfo
             if (!File.Exists(tmp)) return false;
             XmlDocument doc = new XmlDocument();
             doc.Load(tmp);
-            XmlNode battery = doc.SelectSingleNode("//Battery");
+            XmlNode battery = doc.SelectSingleNode("//*[local-name()='Battery']");
             if (battery == null) return false;
             design = ReadInt(battery, "DesignCapacity");
             full = ReadInt(battery, "FullChargeCapacity");
@@ -54,7 +54,7 @@ public static class BatteryInfo
 
     static int ReadInt(XmlNode parent, string name)
     {
-        XmlNode n = parent.SelectSingleNode(name);
+        XmlNode n = parent.SelectSingleNode(".//*[local-name()='" + name + "']");
         int v;
         if (n != null && int.TryParse(n.InnerText.Trim(), out v)) return v;
         return 0;
