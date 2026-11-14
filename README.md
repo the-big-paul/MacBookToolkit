@@ -15,9 +15,9 @@
 
 | Language | Light | Dark |
 |---|---|---|
-| 🇬🇧 English | ![en light](screenshots/en-light.png) | ![en dark](screenshots/en-dark.png) |
-| 🇷🇺 Русский | ![ru light](screenshots/ru-light.png) | ![ru dark](screenshots/ru-dark.png) |
-| 🇺🇦 Українська | ![uk light](screenshots/uk-light.png) | ![uk dark](screenshots/uk-dark.png) |
+| 🇬🇧 English | ![en light](screenshots/en-light-1.3.png) | ![en dark](screenshots/en-dark-1.3.png) |
+| 🇷🇺 Русский | ![ru light](screenshots/ru-light-1.3.png) | ![ru dark](screenshots/ru-dark-1.3.png) |
+| 🇺🇦 Українська | ![uk light](screenshots/uk-light-1.3.png) | ![uk dark](screenshots/uk-dark-1.3.png) |
 
 ---
 
@@ -101,6 +101,18 @@ Low-level keyboard/mouse hooks with a small debounce state machine, WMI brightne
 controls for the Windows 11 look, and a lightweight GitHub release checker.
 
 ### Changelog
+
+#### 1.3.1 — 2026-11-14
+- Fixed the update checker: it compared against a hard-coded 1.2.0.0 and could offer the same version. It now uses the real application version.
+- Fresh screenshots and a fully synchronised trilingual README/release notes (EN/RU/UK).
+
+#### 1.3.1 — 2026-11-14
+- Исправлена проверка обновлений: сравнение шло с жёстко заданной 1.2.0.0 и могло предлагать ту же версию. Теперь используется фактическая версия приложения.
+- Обновлены скриншоты, README и описания релизов — полностью на трёх языках (EN/RU/UK).
+
+#### 1.3.1 — 2026-11-14
+- Виправлено перевірку оновлень: порівняння йшло з жорстко заданою 1.2.0.0 і могло пропонувати ту саму версію. Тепер використовується фактична версія програми.
+- Оновлено скриншоти, README та описи релізів — повністю трьома мовами (EN/RU/UK).
 
 #### 1.3.0 — 2026-11-14
 - Full redesign: 4 sections, aligned grid, compact 700×548 layout, single info line under the buttons.

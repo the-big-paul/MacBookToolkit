@@ -530,7 +530,7 @@ public class MainForm : Form
 
         caption = new ThemedCaption();
         caption.Title = "MacBookToolkit";
-        caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
+        caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.3.1" : Application.ProductVersion);
         caption.VersionTip = Texts.T("version_tip");
         caption.SetBounds(0, 0, Ui.Px(700), Ui.Px(40));
         caption.CloseClick += delegate { Close(); };
@@ -789,7 +789,7 @@ public class MainForm : Form
         catch (Exception ex) { Program.LogError("open repository", ex); }
     }
 
-    // ---------- profiles, battery, night light, updates ----------
+    // ---------- battery, drivers, updates ----------
     bool IsOnBattery()
     {
         try { return SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline; }
@@ -909,7 +909,7 @@ public class MainForm : Form
     void ApplyUpdateInfo(UpdateInfo info, bool manual)
     {
         _update = info;
-        string current = "1.2.0.0";
+        string current = typeof(MainForm).Assembly.GetName().Version.ToString();
         bool newer = info != null && !string.IsNullOrEmpty(info.Version) && UpdateChecker.IsNewer(current, info.Version);
         if (miUpdate != null)
         {
@@ -1004,7 +1004,7 @@ public class MainForm : Form
         }
         if (caption != null)
         {
-            caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.2" : Application.ProductVersion);
+            caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.3.1" : Application.ProductVersion);
             caption.VersionTip = Texts.T("version_tip");
             caption.Invalidate();
         }
