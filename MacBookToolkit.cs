@@ -974,8 +974,18 @@ public class MainForm : Form
 
     void HandleHotkey(int id)
     {
-        if (id == HOTKEY_DIM) { _loading = true; chkScreen.Checked = !chkScreen.Checked; _loading = false; }
-        else if (id == HOTKEY_TOUCH) { _loading = true; chkTouch.Checked = !chkTouch.Checked; _loading = false; }
+        if (id == HOTKEY_DIM)
+        {
+            bool v = !chkScreen.Checked;
+            _loading = true; chkScreen.Checked = v; _loading = false;
+            _s.ScreenEnabled = v; _s.Save();
+        }
+        else if (id == HOTKEY_TOUCH)
+        {
+            bool v = !chkTouch.Checked;
+            _loading = true; chkTouch.Checked = v; _loading = false;
+            _s.TouchEnabled = v; _s.Save();
+        }
         else if (id == HOTKEY_TOP) ApplyTopMost(!TopMost, true);
         else if (id == HOTKEY_KBD) ToggleKeyboardLock();
     }

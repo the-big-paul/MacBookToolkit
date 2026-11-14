@@ -29,18 +29,18 @@ public static class BatteryInfo
             });
             if (p != null) p.WaitForExit(15000);
             if (!File.Exists(tmp)) return false;
-            XmlDocument doc = new XmlDocument();
-            doc.Load(tmp);
-            XmlNode battery = doc.SelectSingleNode("//*[local-name()='Battery']");
-            if (battery == null) return false;
-            design = ReadInt(battery, "DesignCapacity");
-            full = ReadInt(battery, "FullChargeCapacity");
-            cycles = ReadInt(battery, "CycleCount");
-            charge = ReadInt(battery, "ChargeCapacity");
-            if (design > 0 && full > 0)
+            if (ParseReport(tmp, out design, out full, out cycles, out charge))
             {
-                // charge capacity is not always present; fall back to WMI
                 if (charge <= 0) charge = WmiCharge();
+                if (charge <= 0)
+                {
+                    try
+                    {
+                        float pct = SystemInformation.PowerStatus.BatteryLifePercent;
+                        if (pct >= 0f && pct <= 1f) charge = (int)Math.Round(pct * 100f);
+                    }
+                    catch { }
+                }
                 return true;
             }
         }
@@ -50,6 +50,24 @@ public static class BatteryInfo
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
         }
         return false;
+    }
+
+    public static bool ParseReport(string xmlPath, out int design, out int full, out int cycles, out int charge)
+    {
+        design = 0; full = 0; cycles = 0; charge = 0;
+        try
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.Load(xmlPath);
+            XmlNode battery = doc.SelectSingleNode("//*[local-name()='Battery']");
+            if (battery == null) return false;
+            design = ReadInt(battery, "DesignCapacity");
+            full = ReadInt(battery, "FullChargeCapacity");
+            cycles = ReadInt(battery, "CycleCount");
+            charge = ReadInt(battery, "ChargeCapacity");
+            return design > 0 && full > 0;
+        }
+        catch { return false; }
     }
 
     static int ReadInt(XmlNode parent, string name)

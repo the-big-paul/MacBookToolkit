@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Text;
 
@@ -35,6 +36,8 @@ public static class Tests
         TestTooltips();
         TestUnits();
         TestAutoTuner();
+        TestBatteryReport();
+        TestUpdateChecker();
         TestNoEmoji();
         TestIdleDecision();
         TestLocalization();
@@ -237,6 +240,42 @@ public static class Tests
         Texts.Lang = "uk";
         Check("uk min unit", Texts.T("unit_min") == "хв", Texts.T("unit_min"));
         Texts.Lang = "ru";
+    }
+
+    static void TestBatteryReport()
+    {
+        string xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+            "<BatteryReport xmlns=\"http://schemas.microsoft.com/battery/2012\">" +
+            "<Batteries><Battery><DesignCapacity>74000</DesignCapacity>" +
+            "<FullChargeCapacity>70000</FullChargeCapacity><CycleCount>210</CycleCount>" +
+            "</Battery></Batteries></BatteryReport>";
+        string tmp = Path.Combine(Path.GetTempPath(), "mbt_test_battery.xml");
+        File.WriteAllText(tmp, xml);
+        int design, full, cycles, charge;
+        bool ok = BatteryInfo.ParseReport(tmp, out design, out full, out cycles, out charge);
+        File.Delete(tmp);
+        Check("battery report parsed", ok, "ok=" + ok);
+        Check("battery design", design == 74000, "" + design);
+        Check("battery full", full == 70000, "" + full);
+        Check("battery cycles", cycles == 210, "" + cycles);
+        Check("battery wear", BatteryInfo.WearPercent(74000, 70000) == 5, "" + BatteryInfo.WearPercent(74000, 70000));
+        Check("battery wear new", BatteryInfo.WearPercent(74000, 75510) == 0, "" + BatteryInfo.WearPercent(74000, 75510));
+        Check("battery report missing", !BatteryInfo.ParseReport(Path.Combine(Path.GetTempPath(), "no_such_file_xyz.xml"), out design, out full, out cycles, out charge), "");
+    }
+
+    static void TestUpdateChecker()
+    {
+        string json = "{\"tag_name\":\"v1.3.0\",\"html_url\":\"https://github.com/x/y/releases/tag/v1.3.0\"," +
+            "\"assets\":[{\"browser_download_url\":\"https://github.com/x/y/releases/download/v1.3.0/MacBookToolkit.exe\"}]}";
+        UpdateInfo info = UpdateChecker.Parse(json);
+        Check("update version", info.Version == "1.3.0", info.Version);
+        Check("update page", info.PageUrl.EndsWith("v1.3.0"), info.PageUrl);
+        Check("update asset", info.AssetUrl.EndsWith("MacBookToolkit.exe"), info.AssetUrl);
+        Check("update newer", UpdateChecker.IsNewer("1.2.0.0", "1.3.0"), "");
+        Check("update same", !UpdateChecker.IsNewer("1.3.0.0", "1.3.0"), "");
+        Check("update invalid", !UpdateChecker.IsNewer("abc", "1.3.0"), "");
+        UpdateInfo empty = UpdateChecker.Parse("not json");
+        Check("update empty", empty.Version == "" && empty.PageUrl == "", "");
     }
 
     static void TestAutoTuner()
