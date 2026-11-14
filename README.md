@@ -2,10 +2,18 @@
 
 **[🇬🇧 English](#english)** · **[🇷🇺 Русский](#russian)** · **[🇺🇦 Українська](#ukrainian)**
 
-> A tiny, portable **Windows utility made for MacBook hardware** running Windows natively (Boot Camp).
+> **Current version: v1.3.1** — a tiny, portable **Windows utility made for MacBook hardware** running Windows natively (Boot Camp).
 > It restores the small quality-of-life things Windows lacks on a Mac: adaptive screen dimming,
 > palm rejection for the trackpad, key-chatter protection for the butterfly keyboard, a themed tray menu,
 > battery health, updates and a compact Windows 11 style UI in **English, Russian and Ukrainian**.
+>
+> **Текущая версия: v1.3.1** — компактная портативная утилита для **Windows на MacBook** (Boot Camp):
+> адаптивное затемнение и яркость, защита трекпада и клавиатуры, меню в трее в цветах темы,
+> состояние батареи, обновления и аккуратный интерфейс в стиле Windows 11 на **русском, украинском и английском**.
+>
+> **Поточна версія: v1.3.1** — компактна портативна утиліта для **Windows на MacBook** (Boot Camp):
+> адаптивне затемнення та яскравість, захист трекпада й клавіатури, меню в треї в кольорах теми,
+> стан батареї, оновлення й охайний інтерфейс у стилі Windows 11 **українською, російською та англійською**.
 
 **📥 [Download the latest release](https://github.com/the-big-paul/MacBookToolkit/releases/latest)** · **📄 [MIT License](LICENSE)** · **🧪 328 automated tests**
 
@@ -23,6 +31,8 @@
 
 <a id="english"></a>
 ## 🇬🇧 English
+
+**Version: v1.3.1**
 
 ### What it is
 
@@ -144,6 +154,8 @@ Use at your own risk.
 <a id="russian"></a>
 ## 🇷🇺 Русский
 
+**Версия: v1.3.1**
+
 ### Что это
 
 **MacBookToolkit** — один портативный `.exe` для Windows на MacBook (Boot Camp).
@@ -251,6 +263,8 @@ MIT — см. [LICENSE](LICENSE).
 
 <a id="ukrainian"></a>
 ## 🇺🇦 Українська
+
+**Версія: v1.3.1**
 
 ### Що це
 
