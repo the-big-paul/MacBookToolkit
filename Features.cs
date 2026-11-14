@@ -10,6 +10,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
+using Microsoft.Win32;
+using Windows.Devices.Sensors;
 
 public static class BatteryInfo
 {
@@ -105,6 +107,32 @@ public static class BatteryInfo
         int wear = (int)Math.Round((1.0 - (double)full / design) * 100.0);
         if (wear < 0) wear = 0;
         return wear;
+    }
+}
+
+public static class BatteryPower
+{
+    public static bool TryRead(out bool charging, out bool discharging, out int chargeRateMw, out int dischargeRateMw, out int remainingCapacity, out int voltageMv)
+    {
+        charging = false; discharging = false; chargeRateMw = 0; dischargeRateMw = 0; remainingCapacity = 0; voltageMv = 0;
+        try
+        {
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM BatteryStatus"))
+            {
+                foreach (ManagementObject item in searcher.Get())
+                {
+                    charging = Convert.ToBoolean(item["Charging"]);
+                    discharging = Convert.ToBoolean(item["Discharging"]);
+                    chargeRateMw = Convert.ToInt32(item["ChargeRate"]);
+                    dischargeRateMw = Convert.ToInt32(item["DischargeRate"]);
+                    remainingCapacity = Convert.ToInt32(item["RemainingCapacity"]);
+                    voltageMv = Convert.ToInt32(item["Voltage"]);
+                    return true;
+                }
+            }
+        }
+        catch { }
+        return false;
     }
 }
 
@@ -212,4 +240,158 @@ public static class QuickActions
     public static void Lock() { try { LockWorkStation(); } catch { } }
     public static void Sleep() { try { SetSuspendState(false, true, false); } catch { } }
     public static void Hibernate() { try { SetSuspendState(true, true, false); } catch { } }
+}
+
+public static class AmbientLight
+{
+    static LightSensor _sensor;
+    static bool _tried;
+
+    static void Init()
+    {
+        if (_tried) return;
+        _tried = true;
+        try { _sensor = LightSensor.GetDefault(); }
+        catch { _sensor = null; }
+    }
+
+    public static bool Available
+    {
+        get { Init(); return _sensor != null; }
+    }
+
+    public static bool TryReadLux(out double lux)
+    {
+        lux = 0;
+        Init();
+        if (_sensor == null) return false;
+        try
+        {
+            LightSensorReading reading = _sensor.GetCurrentReading();
+            if (reading == null) return false;
+            lux = reading.IlluminanceInLux;
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public static int MapLuxToPercent(double lux, bool onBattery)
+    {
+        int pct;
+        if (lux < 10) pct = 22;
+        else if (lux < 50) pct = 35;
+        else if (lux < 200) pct = 55;
+        else if (lux < 500) pct = 75;
+        else pct = 100;
+        if (onBattery) pct = (pct * 85 + 50) / 100;
+        if (pct < 10) pct = 10;
+        if (pct > 100) pct = 100;
+        return pct;
+    }
+}
+
+public static class BootCampControl
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sec, uint disp, uint flags, IntPtr templ);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool DeviceIoControl(IntPtr h, uint code, byte[] inBuf, uint inSize, byte[] outBuf, uint outSize, out uint returned, IntPtr ov);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr h);
+
+    const uint GENERIC_READ = 0x80000000, GENERIC_WRITE = 0x40000000, FILE_SHARE = 3, OPEN_EXISTING = 3;
+    const uint IOCTL_FN = 0xB403201C;
+    const uint IOCTL_ACPI_BRIGHTNESS = 0xB4032048;
+    const string KEY_PATH = @"Software\Apple Inc.\Apple Keyboard Support";
+    const string FN_VALUE = "OSXFnBehavior";
+
+    static readonly string[] KeyboardDevices = new string[]
+    {
+        @"\\.\AppleDFR",
+        @"\\.\AppleSPIKeyboard",
+        @"\\.\AppleKeyboardInternalUSB",
+        @"\\.\AppleKeyboard"
+    };
+
+    public static bool ReadFnStandard()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(KEY_PATH))
+            {
+                if (k == null) return false;
+                object v = k.GetValue(FN_VALUE);
+                // OSXFnBehavior: 1 = Mac behaviour (hardware keys without Fn), 0 = standard F1-F12.
+                return v != null && Convert.ToInt32(v) == 0;
+            }
+        }
+        catch { return false; }
+    }
+
+    public static bool SetFnStandard(bool standard)
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(KEY_PATH))
+            {
+                if (k != null) k.SetValue(FN_VALUE, standard ? 0 : 1, RegistryValueKind.DWord);
+            }
+        }
+        catch { }
+
+        bool applied = false;
+        byte[] buffer = BitConverter.GetBytes(standard ? 0 : 1);
+        byte[] brightness = BitConverter.GetBytes(1);
+        foreach (string dev in KeyboardDevices)
+        {
+            IntPtr h = new IntPtr(-1);
+            try
+            {
+                h = CreateFileW(dev, GENERIC_READ | GENERIC_WRITE, FILE_SHARE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+                if (h == new IntPtr(-1)) continue;
+                uint returned;
+                if (DeviceIoControl(h, IOCTL_FN, buffer, 4, null, 0, out returned, IntPtr.Zero))
+                {
+                    uint br;
+                    DeviceIoControl(h, IOCTL_ACPI_BRIGHTNESS, brightness, 4, null, 0, out br, IntPtr.Zero);
+                    applied = true;
+                }
+            }
+            catch { }
+            finally
+            {
+                if (h != new IntPtr(-1)) CloseHandle(h);
+            }
+        }
+        return applied;
+    }
+
+    public static bool IsPrecisionTouchpad()
+    {
+        try
+        {
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                "SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%Precision%'"))
+            {
+                foreach (ManagementObject item in searcher.Get())
+                {
+                    string name = Convert.ToString(item["Name"]);
+                    if (string.IsNullOrEmpty(name)) continue;
+                    bool trackpad = name.IndexOf("Trackpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool touchpad = name.IndexOf("Touchpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (trackpad || touchpad) return true;
+                }
+            }
+        }
+        catch { }
+        try
+        {
+            using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\PrecisionTouchpad"))
+            {
+                if (k != null) return true;
+            }
+        }
+        catch { }
+        return false;
+    }
 }

@@ -423,7 +423,7 @@ public class ThemedLabel : Control, IThemed
     public void FitContent()
     {
         if (!AutoFit || MaxWidth <= 0 || !IsHandleCreated) return;
-        int iconPart = (!string.IsNullOrEmpty(IconGlyph) || IconImage != null) ? Ui.Px(16) + Ui.Px(8) : 0;
+        int iconPart = (IconDrop || !string.IsNullOrEmpty(IconGlyph) || IconImage != null) ? Ui.Px(16) + Ui.Px(8) : 0;
         Size ts = TextRenderer.MeasureText(Text, Font);
         int want = iconPart + ts.Width + Ui.Px(2);
         Width = Math.Max(Ui.Px(30), Math.Min(MaxWidth, want));
@@ -551,7 +551,7 @@ public class ThemedCheckBox : Control, IThemed
             Icons.Draw(g, IconGlyph, new Rectangle(0, (Height - Ui.Px(16)) / 2, Ui.Px(16), Ui.Px(16)), t.Accent, Ui.Px(14));
             iconW = Ui.Px(16) + Ui.Px(6);
         }
-        Rectangle rb = new Rectangle(iconW + Ui.Px(1), y, box, box);
+        Rectangle rb = new Rectangle(Width - Ui.Px(1) - box, y, box, box);
         bool on = Checked;
         using (GraphicsPath p = Ui.Round(rb, Ui.Px(3)))
         {

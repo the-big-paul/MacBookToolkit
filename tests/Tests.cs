@@ -42,6 +42,26 @@ public static class Tests
         TestIdleDecision();
         TestLocalization();
         TestVersion();
+
+        // --- profiles and keyboard backlight ---
+        Settings prof = Settings.FromLines(new string[] {
+            "ProfileEdit=battery", "BatIdleSec=7", "BatDimPct=12", "BatNormalPct=55", "BatScreenOffMin=4"
+        });
+        Check("profile edit battery", prof.ProfileEdit == "battery", prof.ProfileEdit);
+        Check("battery profile values", prof.BatIdleSec == 7 && prof.BatDimPct == 12 && prof.BatNormalPct == 55 && prof.BatScreenOffMin == 4, "");
+        Check("profiles auto enabled", prof.ProfileEnabled, "");
+        Settings badProf = Settings.FromLines(new string[] { "ProfileEdit=xyz", "BatIdleSec=0", "BatDimPct=99", "BatNormalPct=40" });
+        Check("profile clamped", badProf.ProfileEdit == "ac" && badProf.BatIdleSec == 1 && badProf.BatDimPct == 40 && badProf.BatNormalPct == 40 && true, "");
+
+        // --- auto brightness / Fn / battery ---
+        Settings ab = Settings.FromLines(new string[] { "AutoBrightness=True" });
+        Check("auto brightness parsed", ab.AutoBrightness, "");
+        Check("auto brightness default off", !new Settings().AutoBrightness, "");
+        Check("ALS map dark", AmbientLight.MapLuxToPercent(5, false) == 22, "");
+        Check("ALS map room", AmbientLight.MapLuxToPercent(100, false) == 55, "");
+        Check("ALS map bright", AmbientLight.MapLuxToPercent(1000, false) == 100, "");
+        Check("ALS map battery off", AmbientLight.MapLuxToPercent(1000, true) == 85, "");
+        Check("ALS map clamp", AmbientLight.MapLuxToPercent(0, false) >= 10, "");
         Console.WriteLine("PASS=" + pass + " FAIL=" + fail);
         if (fail > 0) Console.WriteLine(failures.ToString());
         return fail == 0 ? 0 : 1;
@@ -430,10 +450,10 @@ public static class Tests
     static void TestVersion()
     {
         Assembly asm = typeof(MainForm).Assembly;
-        Check("assembly version 1.3.1.0", asm.GetName().Version.ToString() == "1.3.1.0", asm.GetName().Version.ToString());
+        Check("assembly version 1.4.0.0", asm.GetName().Version.ToString() == "1.4.0.0", asm.GetName().Version.ToString());
         object[] fv = asm.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), false);
-        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.3.1.0", "");
+        Check("file version attribute", fv.Length == 1 && ((AssemblyFileVersionAttribute)fv[0]).Version == "1.4.0.0", "");
         object[] iv = asm.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false);
-        Check("informational version 1.3.1", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.3.1", "");
+        Check("informational version 1.4", iv.Length == 1 && ((AssemblyInformationalVersionAttribute)iv[0]).InformationalVersion == "1.4", "");
     }
 }

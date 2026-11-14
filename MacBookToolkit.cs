@@ -26,9 +26,15 @@ public class Settings
     public bool AutoStart = true;
     public bool ShowTray = true;
     public bool TopMost = false;
-    public bool ProfileEnabled = false;
+    public bool ProfileEnabled = true;
+    public string ProfileEdit = "ac";
+    public int BatIdleSec = 15;
+    public int BatDimPct = 10;
+    public int BatNormalPct = 60;
+    public int BatScreenOffMin = 5;
     public bool NightLight = false;
     public bool AutoUpdateCheck = true;
+    public bool AutoBrightness = false;
     public string Lang = "ru";
     public string Theme = "system";
     public string Accent = "system";
@@ -94,8 +100,14 @@ public class Settings
                 case "ShowTray": if (bool.TryParse(v, out b)) s.ShowTray = b; break;
                 case "TopMost": if (bool.TryParse(v, out b)) s.TopMost = b; break;
                 case "ProfileEnabled": if (bool.TryParse(v, out b)) s.ProfileEnabled = b; break;
+                case "ProfileEdit": s.ProfileEdit = v; break;
+                case "BatIdleSec": if (int.TryParse(v, out i)) s.BatIdleSec = i; break;
+                case "BatDimPct": if (int.TryParse(v, out i)) s.BatDimPct = i; break;
+                case "BatNormalPct": if (int.TryParse(v, out i)) s.BatNormalPct = i; break;
+                case "BatScreenOffMin": if (int.TryParse(v, out i)) s.BatScreenOffMin = i; break;
                 case "NightLight": if (bool.TryParse(v, out b)) s.NightLight = b; break;
                 case "AutoUpdateCheck": if (bool.TryParse(v, out b)) s.AutoUpdateCheck = b; break;
+                case "AutoBrightness": if (bool.TryParse(v, out b)) s.AutoBrightness = b; break;
                 case "Lang": s.Lang = v; break;
                 case "Theme": s.Theme = v; break;
                 case "Accent": s.Accent = v; break;
@@ -125,6 +137,13 @@ public class Settings
         bool knownAccent = false;
         for (int i = 0; i < ThemeManager.AccentKeys.Length; i++) if (ThemeManager.AccentKeys[i] == Accent) { knownAccent = true; break; }
         if (!knownAccent) Accent = "system";
+        ProfileEnabled = true;
+        if (ProfileEdit != "ac" && ProfileEdit != "battery") ProfileEdit = "ac";
+        BatIdleSec = ClampInt(BatIdleSec, 1, 300);
+        BatDimPct = ClampInt(BatDimPct, 1, 100);
+        BatNormalPct = ClampInt(BatNormalPct, 1, 100);
+        BatScreenOffMin = ClampInt(BatScreenOffMin, 1, 60);
+        if (BatDimPct > BatNormalPct) BatDimPct = BatNormalPct;
     }
 
     public void Save()
@@ -147,8 +166,15 @@ public class Settings
             sb.AppendLine("ShowTray=" + ShowTray.ToString());
             sb.AppendLine("TopMost=" + TopMost.ToString());
             sb.AppendLine("ProfileEnabled=" + ProfileEnabled.ToString());
+            sb.AppendLine("ProfileEdit=" + ProfileEdit.ToString());
+            sb.AppendLine("BatIdleSec=" + BatIdleSec.ToString());
+            sb.AppendLine("BatDimPct=" + BatDimPct.ToString());
+            sb.AppendLine("BatNormalPct=" + BatNormalPct.ToString());
+            sb.AppendLine("BatScreenOffMin=" + BatScreenOffMin.ToString());
+            sb.AppendLine("ProfileEnabled=" + ProfileEnabled.ToString());
             sb.AppendLine("NightLight=" + NightLight.ToString());
             sb.AppendLine("AutoUpdateCheck=" + AutoUpdateCheck.ToString());
+            sb.AppendLine("AutoBrightness=" + AutoBrightness.ToString());
             sb.AppendLine("Lang=" + Lang.ToString());
             sb.AppendLine("Theme=" + Theme.ToString());
             sb.AppendLine("Accent=" + Accent.ToString());
@@ -287,24 +313,33 @@ public class MainForm : Form
 
     ThemedCard cardScreen, cardKey, cardTouch, cardOptions, cardSystem;
     ThemedCaption caption;
-    ThemedLabel lblIdle, lblDim, lblNormal;
+    ThemedLabel lblProfile, lblIdle, lblDim, lblNormal;
     ThemedLabel lblBlock, lblUp, lblDown, lblScreenOff, lblTheme, lblAccent, lblLang;
     ThemedCheckBox chkScreen, chkTouch, chkKey, chkTopMost, chkAutoStart, chkTray;
-    ThemedCheckBox chkProfile, chkNight, chkAutoUpdate;
+    ThemedCheckBox chkProfile, chkNight, chkAutoUpdate, chkFnStandard, chkAutoBrightness;
     ThemedLabel lblBattery, lblDrivers;
     ThemedSpinner numIdle, numDim, numNormal, numBlock, numUp, numDown, numScreenOff;
-    ThemedSelect cbLang, cbTheme, cbAccent;
+    ThemedSelect cbLang, cbTheme, cbAccent, cbProfile;
     ThemedButton btnSave, btnReset;
+    ThemedLabel btnBootCamp, btnAppleUpdate;
     NotifyIcon tray;
     ToolStripMenuItem miShow, miTopMost, miAutoStart, miExit;
     ToolStripMenuItem miNoDim, miLock, miSleep, miHibernate, miNight, miKbdLock, miCheckUpd, miUpdate, miBattery;
+    ToolStripMenuItem miTouchpad;
     ContextMenuStrip cms;
     System.Windows.Forms.Timer idleTimer;
     System.Windows.Forms.Timer themeWatch;
     System.Windows.Forms.Timer tipTimer;
     System.Windows.Forms.Timer tuneTimer;
     System.Windows.Forms.Timer batteryTimer;
+    System.Windows.Forms.Timer alsTimer;
     DateTime _lastBatteryRefresh = DateTime.MinValue;
+    bool _alsAvailable;
+    int _autoBrightnessPct;
+    bool _batteryLowNotified;
+    bool _batteryCriticalNotified;
+    bool _fnStandard;
+    bool _ptpDetected;
     NightLightForm _night;
     bool _suppressDim;
     DateTime _suppressUntil = DateTime.MinValue;
@@ -312,6 +347,8 @@ public class MainForm : Form
     bool _profileBattery;
     bool _warnedWear;
     bool _warnedDrivers;
+    int _profileEditorIndex;
+    bool _powerWasBattery;
     UpdateInfo _update;
     Control _tipControl;
     string _tipKey;
@@ -353,6 +390,7 @@ public class MainForm : Form
         batteryTimer.Interval = 5000;
         batteryTimer.Tick += delegate
         {
+            ApplyProfileIfNeeded();
             if ((DateTime.Now - _lastBatteryRefresh).TotalSeconds >= 60)
             {
                 _lastBatteryRefresh = DateTime.Now;
@@ -360,6 +398,10 @@ public class MainForm : Form
             }
         };
         batteryTimer.Start();
+        alsTimer = new System.Windows.Forms.Timer();
+        alsTimer.Interval = 2000;
+        alsTimer.Tick += delegate { AutoBrightnessTick(); };
+        alsTimer.Start();
         Move += delegate { TipBalloon.HideTip(); };
     }
 
@@ -530,7 +572,7 @@ public class MainForm : Form
 
         caption = new ThemedCaption();
         caption.Title = "MacBookToolkit";
-        caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.3.1" : Application.ProductVersion);
+        caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.4" : Application.ProductVersion);
         caption.VersionTip = Texts.T("version_tip");
         caption.SetBounds(0, 0, Ui.Px(700), Ui.Px(40));
         caption.CloseClick += delegate { Close(); };
@@ -540,31 +582,67 @@ public class MainForm : Form
 
         ThemedLabel lb;
 
-        cardScreen = Card("sec_display", "", 16, 52, 328, 208);
-        lb = Lbl("chk_screen", "\uE706", 14, 32, 270, 30, cardScreen);
-        chkScreen = Chk(292, 32, cardScreen, _s.ScreenEnabled); LinkToggle(lb, chkScreen);
+        cardScreen = Card("sec_display", "", 16, 52, 328, 210);
+        lblProfile = Lbl("lbl_profile", "\uE9E9", 14, 30, 206, 22, cardScreen);
+        cbProfile = Sel(234, 30, 80, new string[] { Texts.T("profile_ac"), Texts.T("profile_bat") }, cardScreen);
+        cbProfile.SetBounds(Ui.Px(234), Ui.Px(30), Ui.Px(80), Ui.Px(22));
+        Tip(lblProfile, "tip_profile"); Tip(cbProfile, "tip_profile");
+        lb = Lbl("chk_autobright", "\uE957", 14, 54, 270, 24, cardScreen);
+        chkAutoBrightness = Chk(290, 54, cardScreen, _s.AutoBrightness); chkAutoBrightness.SetBounds(Ui.Px(290), Ui.Px(54), Ui.Px(24), Ui.Px(24)); LinkToggle(lb, chkAutoBrightness);
+        Tip(lb, "tip_autobright"); Tip(chkAutoBrightness, "tip_autobright");
+        lb = Lbl("chk_screen", "\uE706", 14, 80, 270, 24, cardScreen);
+        chkScreen = Chk(290, 80, cardScreen, _s.ScreenEnabled); chkScreen.SetBounds(Ui.Px(290), Ui.Px(80), Ui.Px(24), Ui.Px(24)); LinkToggle(lb, chkScreen);
         Tip(lb, "tip_chk_screen"); Tip(chkScreen, "tip_chk_screen");
-        lblIdle = Lbl("lbl_idle", "\uE823", 14, 66, 206, 30, cardScreen);
-        numIdle = Spn(234, 66, 80, 1, 300, 1, _s.IdleSec, cardScreen, "unit_sec");
-        lblDim = Lbl("lbl_dim", "\uE793", 14, 100, 206, 30, cardScreen);
-        numDim = Spn(234, 100, 80, 1, 100, 1, _s.DimPct, cardScreen, "unit_pct");
-        lblNormal = Lbl("lbl_normal", "\uE7F4", 14, 134, 206, 30, cardScreen);
-        numNormal = Spn(234, 134, 80, 1, 100, 1, _s.NormalPct, cardScreen, "unit_pct");
-        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 168, 206, 30, cardScreen);
-        numScreenOff = Spn(234, 168, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, "unit_min");
+        chkAutoBrightness.CheckedChanged += delegate
+        {
+            if (_loading) return;
+            _s.AutoBrightness = chkAutoBrightness.Checked;
+            _s.Save();
+            _autoBrightnessPct = 0;
+            numNormal.Enabled = !_s.AutoBrightness;
+            if (_s.AutoBrightness)
+            {
+                if (_alsAvailable) AutoBrightnessTick();
+            }
+            else
+            {
+                _brightnessOk = SetBrightness(EffNormalPct);
+                _dimmed = !_brightnessOk;
+            }
+        };
+        lblIdle = Lbl("lbl_idle", "\uE823", 14, 106, 206, 24, cardScreen);
+        numIdle = Spn(234, 106, 80, 1, 300, 1, _s.IdleSec, cardScreen, "unit_sec"); numIdle.SetBounds(Ui.Px(234), Ui.Px(106), Ui.Px(80), Ui.Px(24));
+        lblDim = Lbl("lbl_dim", "\uE793", 14, 132, 206, 24, cardScreen);
+        numDim = Spn(234, 132, 80, 1, 100, 1, _s.DimPct, cardScreen, "unit_pct"); numDim.SetBounds(Ui.Px(234), Ui.Px(132), Ui.Px(80), Ui.Px(24));
+        lblNormal = Lbl("lbl_normal", "\uE7F4", 14, 158, 206, 24, cardScreen);
+        numNormal = Spn(234, 158, 80, 1, 100, 1, _s.NormalPct, cardScreen, "unit_pct"); numNormal.SetBounds(Ui.Px(234), Ui.Px(158), Ui.Px(80), Ui.Px(24));
+        lblScreenOff = Lbl("lbl_screenoff", "\uE7E8", 14, 184, 206, 24, cardScreen);
+        numScreenOff = Spn(234, 184, 80, 1, 60, 1, _s.ScreenOffMin, cardScreen, "unit_min"); numScreenOff.SetBounds(Ui.Px(234), Ui.Px(184), Ui.Px(80), Ui.Px(24));
 
         cardKey = Card("sec_key", "", 16, 270, 328, 174);
         lb = Lbl("chk_key", "\uE765", 14, 32, 270, 30, cardKey);
-        chkKey = Chk(292, 32, cardKey, _s.KeyEnabled); LinkToggle(lb, chkKey);
+        chkKey = Chk(290, 32, cardKey, _s.KeyEnabled); LinkToggle(lb, chkKey);
         Tip(lb, "tip_chk_key"); Tip(chkKey, "tip_chk_key");
         lblUp = Lbl("lbl_up", "\uE916", 14, 66, 206, 30, cardKey);
         numUp = Spn(234, 66, 80, 0, 200, 5, _s.DebounceUpMs, cardKey, "unit_ms");
         lblDown = Lbl("lbl_down", "\uE945", 14, 100, 206, 30, cardKey);
         numDown = Spn(234, 100, 80, 0, Settings.MaxDebounceDownMs, 5, _s.DebounceDownMs, cardKey, "unit_ms");
+        lb = Lbl("chk_fn_standard", "\uE765", 14, 134, 270, 30, cardKey);
+        chkFnStandard = Chk(290, 134, cardKey, _fnStandard); LinkToggle(lb, chkFnStandard);
+        Tip(lb, "tip_fn_standard"); Tip(chkFnStandard, "tip_fn_standard");
+        chkFnStandard.CheckedChanged += delegate
+        {
+            if (_loading) return;
+            bool next = chkFnStandard.Checked;
+            bool applied = BootCampControl.SetFnStandard(next);
+            _fnStandard = next;
+            if (tray != null)
+                tray.ShowBalloonTip(1800, "MacBookToolkit", Texts.T(applied ? "msg_fn_applied" : "msg_fn_reboot"), ToolTipIcon.Info);
+        };
 
         cardTouch = Card("sec_touch", "", 356, 52, 328, 106);
         lb = Lbl("chk_touch", "\uE7C9", 14, 32, 270, 30, cardTouch);
-        chkTouch = Chk(292, 32, cardTouch, _s.TouchEnabled); LinkToggle(lb, chkTouch);
+        chkTouch = Chk(290, 32, cardTouch, _s.TouchEnabled); LinkToggle(lb, chkTouch);
         Tip(lb, "tip_chk_touch"); Tip(chkTouch, "tip_chk_touch");
         lblBlock = Lbl("lbl_block", "\uE8B0", 14, 66, 206, 30, cardTouch);
         numBlock = Spn(234, 66, 80, 50, 2000, 50, _s.BlockMs, cardTouch, "unit_ms");
@@ -580,41 +658,60 @@ public class MainForm : Form
         cbLang = Sel(158, 100, 156, new string[] { "Русский", "Українська", "English" }, cardOptions);
         cbLang.ItemImages = new Image[] { Flags.Draw("ru"), Flags.Draw("uk"), Flags.Draw("en") };
         lb = Lbl("chk_topmost", "\uE718", 14, 134, 270, 30, cardOptions);
-        chkTopMost = Chk(292, 134, cardOptions, _s.TopMost); LinkToggle(lb, chkTopMost);
+        chkTopMost = Chk(290, 134, cardOptions, _s.TopMost); LinkToggle(lb, chkTopMost);
         Tip(lb, "tip_topmost"); Tip(chkTopMost, "tip_topmost");
         lb = Lbl("chk_autostart", "\uE768", 14, 168, 270, 30, cardOptions);
-        chkAutoStart = Chk(292, 168, cardOptions, _s.AutoStart); LinkToggle(lb, chkAutoStart);
+        chkAutoStart = Chk(290, 168, cardOptions, _s.AutoStart); LinkToggle(lb, chkAutoStart);
         Tip(lb, "tip_autostart"); Tip(chkAutoStart, "tip_autostart");
         lb = Lbl("chk_tray", "\uE8A5", 14, 202, 270, 30, cardOptions);
-        chkTray = Chk(292, 202, cardOptions, _s.ShowTray); LinkToggle(lb, chkTray);
+        chkTray = Chk(290, 202, cardOptions, _s.ShowTray); LinkToggle(lb, chkTray);
         Tip(lb, "tip_tray"); Tip(chkTray, "tip_tray");
         lb = Lbl("chk_autoupdate", "\uE72C", 14, 236, 270, 30, cardOptions);
-        chkAutoUpdate = Chk(292, 236, cardOptions, _s.AutoUpdateCheck); LinkToggle(lb, chkAutoUpdate);
+        chkAutoUpdate = Chk(290, 236, cardOptions, _s.AutoUpdateCheck); LinkToggle(lb, chkAutoUpdate);
         Tip(lb, "tip_autoupdate"); Tip(chkAutoUpdate, "tip_autoupdate");
         ApplyCardLinks();
 
         lblBattery = new ThemedLabel();
         lblBattery.Muted = true;
         lblBattery.Font = new Font(Font.FontFamily, Font.Size - 1f);
-        lblBattery.MaxWidth = (int)Ui.Px(420);
+        lblBattery.MaxWidth = (int)Ui.Px(400);
+        lblBattery.IconGlyph = "\uE83F";
         lblBattery.Text = Texts.T("status_battery_na");
-        lblBattery.SetBounds(Ui.Px(16), Ui.Px(508), Ui.Px(420), Ui.Px(24));
+        lblBattery.SetBounds(Ui.Px(76), Ui.Px(508), Ui.Px(400), Ui.Px(24));
         Controls.Add(lblBattery);
         Tip(lblBattery, "tip_battery");
         lblDrivers = new ThemedLabel();
         lblDrivers.Muted = true;
         lblDrivers.Font = new Font(Font.FontFamily, Font.Size - 1f);
         lblDrivers.MaxWidth = (int)Ui.Px(320);
+        lblDrivers.IconGlyph = "\uE713";
         lblDrivers.Text = Texts.T("status_drivers_na");
         lblDrivers.SetBounds(Ui.Px(700 - 16 - 200), Ui.Px(508), Ui.Px(200), Ui.Px(24));
         Controls.Add(lblDrivers);
         Tip(lblDrivers, "tip_drivers");
+
+        btnBootCamp = new ThemedLabel();
+        btnBootCamp.IconGlyph = "\uE7F4";
+        btnBootCamp.Cursor = Cursors.Hand;
+        btnBootCamp.SetBounds(Ui.Px(16), Ui.Px(508), Ui.Px(24), Ui.Px(24));
+        Controls.Add(btnBootCamp);
+        Tip(btnBootCamp, "tip_bootcamp");
+        btnBootCamp.Click += delegate { OpenBootCampPanel(); };
+
+        btnAppleUpdate = new ThemedLabel();
+        btnAppleUpdate.IconGlyph = "\uE895";
+        btnAppleUpdate.Cursor = Cursors.Hand;
+        btnAppleUpdate.SetBounds(Ui.Px(44), Ui.Px(508), Ui.Px(24), Ui.Px(24));
+        Controls.Add(btnAppleUpdate);
+        Tip(btnAppleUpdate, "tip_appleupdate");
+        btnAppleUpdate.Click += delegate { OpenAppleSoftwareUpdate(); };
 
         btnSave = Btn("btn_save", "\uE74E", 16, 456, 328, 40);
         btnReset = Btn("btn_reset", "\uE72C", 356, 456, 328, 40);
         btnReset.Secondary = true;
 
         chkTopMost.CheckedChanged += delegate { if (!_loading) ApplyTopMost(chkTopMost.Checked, true); };
+        cbProfile.SelectedIndexChanged += ProfileChanged;
         cbLang.SelectedIndexChanged += LangChanged;
         cbTheme.SelectedIndexChanged += ThemeChanged;
         cbAccent.SelectedIndexChanged += AccentChanged;
@@ -625,7 +722,9 @@ public class MainForm : Form
         cbLang.SelectedIndex = _s.Lang == "en" ? 2 : (_s.Lang == "uk" ? 1 : 0);
         cbTheme.SelectedIndex = _s.Theme == "light" ? 1 : (_s.Theme == "dark" ? 2 : 0);
         cbAccent.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeManager.AccentKeys, _s.Accent));
+        cbProfile.SelectedIndex = _s.ProfileEdit == "battery" ? 1 : 0;
         _loading = false;
+        LoadProfileEditorValues();
 
         Tip(lblIdle, "tip_idle"); Tip(numIdle, "tip_idle");
         Tip(lblDim, "tip_dim"); Tip(numDim, "tip_dim");
@@ -715,6 +814,9 @@ public class MainForm : Form
         miBattery.Enabled = false;
         miCheckUpd = new ToolStripMenuItem(Texts.T("tray_checkupd"));
         miCheckUpd.Click += delegate { CheckUpdates(true); };
+        miTouchpad = new ToolStripMenuItem(Texts.T("tray_touchpad"));
+        miTouchpad.Click += delegate { OpenTouchpadSettings(); };
+
         miUpdate = new ToolStripMenuItem(Texts.T("tray_update").Replace("{0}", "").Trim());
         miUpdate.Visible = false;
         miUpdate.Click += delegate
@@ -741,6 +843,8 @@ public class MainForm : Form
         cms.Items.Add(miBattery);
         cms.Items.Add(miCheckUpd);
         cms.Items.Add(miUpdate);
+        cms.Items.Add(new ToolStripSeparator());
+        cms.Items.Add(miTouchpad);
         cms.Items.Add(new ToolStripSeparator());
         cms.Items.Add(miExit);
         tray.ContextMenuStrip = cms;
@@ -780,6 +884,57 @@ public class MainForm : Form
         BringToFront();
     }
 
+    void OpenTouchpadSettings()
+    {
+        try { Process.Start(new ProcessStartInfo("ms-settings:devices-touchpad") { UseShellExecute = true }); }
+        catch (Exception ex) { Program.LogError("open touchpad settings", ex); }
+    }
+
+    void OpenBootCampPanel()
+    {
+        try
+        {
+            string[] paths = new string[]
+            {
+                Path.Combine(Environment.SystemDirectory, "AppleControlPanel.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Boot Camp", "Bootcamp.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Boot Camp", "Bootcamp.exe")
+            };
+            foreach (string p in paths)
+            {
+                if (File.Exists(p))
+                {
+                    Process.Start(new ProcessStartInfo(p) { UseShellExecute = true });
+                    return;
+                }
+            }
+            Process.Start(new ProcessStartInfo("https://support.apple.com/guide/bootcamp-control-panel/welcome/6.1/mac/10.13") { UseShellExecute = true });
+        }
+        catch (Exception ex) { Program.LogError("open boot camp panel", ex); }
+    }
+
+    void OpenAppleSoftwareUpdate()
+    {
+        try
+        {
+            string[] paths = new string[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Apple Software Update", "SoftwareUpdate.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Apple Software Update", "SoftwareUpdate.exe")
+            };
+            foreach (string p in paths)
+            {
+                if (File.Exists(p))
+                {
+                    Process.Start(new ProcessStartInfo(p) { UseShellExecute = true });
+                    return;
+                }
+            }
+            Process.Start(new ProcessStartInfo("https://support.apple.com/downloads") { UseShellExecute = true });
+        }
+        catch (Exception ex) { Program.LogError("open apple software update", ex); }
+    }
+
     void OpenRepository()
     {
         try
@@ -796,17 +951,110 @@ public class MainForm : Form
         catch { return false; }
     }
 
-    int EffIdleSec { get { return (_s.ProfileEnabled && IsOnBattery()) ? 15 : _s.IdleSec; } }
-    int EffDimPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? 10 : _s.DimPct; } }
-    int EffNormalPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? 60 : _s.NormalPct; } }
-    int EffScreenOffMin { get { return (_s.ProfileEnabled && IsOnBattery()) ? 5 : _s.ScreenOffMin; } }
+    int EffIdleSec { get { return (_s.ProfileEnabled && IsOnBattery()) ? _s.BatIdleSec : _s.IdleSec; } }
+    int EffDimPct { get { return (_s.ProfileEnabled && IsOnBattery()) ? _s.BatDimPct : _s.DimPct; } }
+    int EffNormalPct
+    {
+        get
+        {
+            if (_s.AutoBrightness && _autoBrightnessPct > 0) return _autoBrightnessPct;
+            return (_s.ProfileEnabled && IsOnBattery()) ? _s.BatNormalPct : _s.NormalPct;
+        }
+    }
+
+    void AutoBrightnessTick()
+    {
+        if (_s == null || !_s.AutoBrightness || !_alsAvailable) return;
+        double lux;
+        if (!AmbientLight.TryReadLux(out lux)) return;
+        int pct = AmbientLight.MapLuxToPercent(lux, IsOnBattery());
+        if (Math.Abs(pct - _autoBrightnessPct) < 3) return;
+        _autoBrightnessPct = pct;
+        if (!_dimmed && !_suppressDim)
+        {
+            _brightnessOk = SetBrightness(pct);
+            if (!_brightnessOk) _dimmed = true;
+        }
+        Program.LogNote("als", "lux=" + lux.ToString("0.0") + " -> " + pct + "%");
+    }
+    int EffScreenOffMin { get { return (_s.ProfileEnabled && IsOnBattery()) ? _s.BatScreenOffMin : _s.ScreenOffMin; } }
+    bool EditingBatteryProfile { get { return cbProfile != null && cbProfile.SelectedIndex == 1; } }
+
+    void SaveProfileEditorValues()
+    {
+        SaveProfileEditorValuesFor(_profileEditorIndex);
+    }
+
+    void SaveProfileEditorValuesFor(int index)
+    {
+        if (index == 1)
+        {
+            _s.BatIdleSec = numIdle.Value;
+            _s.BatDimPct = numDim.Value;
+            _s.BatNormalPct = numNormal.Value;
+            _s.BatScreenOffMin = numScreenOff.Value;
+        }
+        else
+        {
+            _s.IdleSec = numIdle.Value;
+            _s.DimPct = numDim.Value;
+            _s.NormalPct = numNormal.Value;
+            _s.ScreenOffMin = numScreenOff.Value;
+        }
+        ClampProfiles();
+    }
+
+    void ClampProfiles()
+    {
+        if (_s.DimPct > _s.NormalPct) _s.DimPct = _s.NormalPct;
+        if (_s.BatDimPct > _s.BatNormalPct) _s.BatDimPct = _s.BatNormalPct;
+    }
+
+    void LoadProfileEditorValues()
+    {
+        bool old = _loading;
+        _loading = true;
+        _profileEditorIndex = cbProfile.SelectedIndex;
+        if (_profileEditorIndex == 1)
+        {
+            numIdle.Value = _s.BatIdleSec;
+            numDim.Value = _s.BatDimPct;
+            numNormal.Value = _s.BatNormalPct;
+            numScreenOff.Value = _s.BatScreenOffMin;
+        }
+        else
+        {
+            numIdle.Value = _s.IdleSec;
+            numDim.Value = _s.DimPct;
+            numNormal.Value = _s.NormalPct;
+            numScreenOff.Value = _s.ScreenOffMin;
+        }
+        _loading = old;
+    }
+
+    void ProfileChanged(object sender, EventArgs e)
+    {
+        if (_loading) return;
+        SaveProfileEditorValuesFor(_profileEditorIndex);
+        _s.ProfileEdit = cbProfile.SelectedIndex == 1 ? "battery" : "ac";
+        _s.Save();
+        LoadProfileEditorValues();
+    }
+
+    void ApplyProfileNow()
+    {
+        _brightnessOk = SetBrightness(EffNormalPct);
+        _dimmed = !_brightnessOk;
+        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
+        Program.LogNote("profile", (IsOnBattery() ? "battery" : "ac") + " profile applied, brightness=" + EffNormalPct + "%, idle=" + EffIdleSec + "s");
+    }
 
     void LayoutStatusRow()
     {
         if (lblBattery != null)
         {
             lblBattery.FitContent();
-            lblBattery.Left = Ui.Px(16);
+            lblBattery.Left = Ui.Px(76);
             lblBattery.Top = Ui.Px(508);
             lblBattery.Height = Ui.Px(24);
         }
@@ -823,11 +1071,14 @@ public class MainForm : Form
     {
         if (lblBattery == null) return;
         int design, full, cycles, charge;
-        if (BatteryInfo.TryRead(out design, out full, out cycles, out charge))
+        bool haveReport = BatteryInfo.TryRead(out design, out full, out cycles, out charge);
+        int pct = 0;
+        string baseText;
+        if (haveReport)
         {
+            pct = charge;
             int wear = BatteryInfo.WearPercent(design, full);
-            string cyc = cycles.ToString();
-            lblBattery.Text = string.Format(Texts.T("status_battery"), charge, wear, cyc);
+            baseText = string.Format(Texts.T("status_battery"), charge, wear, cycles.ToString());
             if (!_warnedWear && wear >= 20)
             {
                 _warnedWear = true;
@@ -837,11 +1088,76 @@ public class MainForm : Form
         else
         {
             int c = BatteryInfo.WmiCharge();
-            lblBattery.Text = Texts.T("status_battery_na");
-            if (c > 0) lblBattery.Text = string.Format(Texts.T("status_battery"), c, "—", "—");
+            pct = c;
+            baseText = Texts.T("status_battery_na");
+            if (c > 0) baseText = string.Format(Texts.T("status_battery"), c, "—", "—");
         }
+
+        bool charging, discharging;
+        int chargeRate, dischargeRate, remaining, voltage;
+        BatteryPower.TryRead(out charging, out discharging, out chargeRate, out dischargeRate, out remaining, out voltage);
+        string extra = "";
+        if (chargeRate > 0) extra += " · +" + (chargeRate / 1000.0).ToString("0.0") + " W";
+        else if (dischargeRate > 0) extra += " · −" + (dischargeRate / 1000.0).ToString("0.0") + " W";
+        else extra += " · 0.0 W";
+        if (charging) extra += " · " + Texts.T("status_charging");
+        else if (discharging && dischargeRate > 0 && remaining > 0)
+        {
+            int minutes = (int)Math.Round(remaining * 60.0 / dischargeRate);
+            extra += " · " + FormatBatteryShort(minutes);
+        }
+        else if (IsOnBattery())
+        {
+            int seconds = SystemInformation.PowerStatus.BatteryLifeRemaining;
+            if (seconds > 0) extra += " · " + FormatBatteryShort(seconds / 60);
+        }
+        lblBattery.Text = baseText + extra;
         if (miBattery != null) miBattery.Text = lblBattery.Text;
+        if (tray != null)
+        {
+            string tip = "MacBookToolkit · " + pct + " %";
+            if (chargeRate > 0) tip += " · +" + (chargeRate / 1000.0).ToString("0.0") + " W";
+            else if (dischargeRate > 0) tip += " · −" + (dischargeRate / 1000.0).ToString("0.0") + " W";
+            if (tip.Length > 63) tip = tip.Substring(0, 63);
+            tray.Text = tip;
+        }
+        HandleBatteryNotifications(pct, charging, IsOnBattery());
         LayoutStatusRow();
+    }
+
+    static string FormatBatteryShort(int minutes)
+    {
+        if (minutes < 0) minutes = 0;
+        return string.Format(Texts.T("status_time_short"), minutes / 60, minutes % 60);
+    }
+
+    static string FormatBatteryMinutes(int minutes)
+    {
+        if (minutes < 0) minutes = 0;
+        int h = minutes / 60;
+        int m = minutes % 60;
+        return string.Format(Texts.T("status_time_fmt"), h, m);
+    }
+
+    void HandleBatteryNotifications(int pct, bool charging, bool onBattery)
+    {
+        if (charging || !onBattery)
+        {
+            _batteryLowNotified = false;
+            _batteryCriticalNotified = false;
+            return;
+        }
+        if (pct <= 8 && !_batteryCriticalNotified)
+        {
+            _batteryCriticalNotified = true;
+            _batteryLowNotified = true;
+            if (tray != null) tray.ShowBalloonTip(5000, "MacBookToolkit", string.Format(Texts.T("msg_battery_critical"), pct), ToolTipIcon.Error);
+        }
+        else if (pct <= 20 && !_batteryLowNotified)
+        {
+            _batteryLowNotified = true;
+            if (tray != null) tray.ShowBalloonTip(4000, "MacBookToolkit", string.Format(Texts.T("msg_battery_low"), pct), ToolTipIcon.Warning);
+        }
     }
 
     void RefreshDriverStatus()
@@ -863,10 +1179,15 @@ public class MainForm : Form
         if (battery == _profileBattery) return;
         _profileBattery = battery;
         if (!_s.ProfileEnabled) return;
-        _brightnessOk = SetBrightness(EffNormalPct);
-        _dimmed = !_brightnessOk;
-        ThreadPool.QueueUserWorkItem(delegate(object state) { ApplyPower(); });
-        Program.LogNote("profile", (battery ? "battery" : "ac") + " profile applied, brightness=" + EffNormalPct + "%");
+        if (cbProfile != null)
+        {
+            bool old = _loading;
+            _loading = true;
+            cbProfile.SelectedIndex = battery ? 1 : 0;
+            _loading = old;
+            LoadProfileEditorValues();
+        }
+        ApplyProfileNow();
     }
 
     void ToggleNightLight(bool on)
@@ -1004,9 +1325,15 @@ public class MainForm : Form
         }
         if (caption != null)
         {
-            caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.3.1" : Application.ProductVersion);
+            caption.VersionText = "v" + (string.IsNullOrEmpty(Application.ProductVersion) ? "1.4" : Application.ProductVersion);
             caption.VersionTip = Texts.T("version_tip");
             caption.Invalidate();
+        }
+        if (cbProfile != null)
+        {
+            int idxP = cbProfile.SelectedIndex;
+            cbProfile.Items = new string[] { Texts.T("profile_ac"), Texts.T("profile_bat") };
+            cbProfile.SelectedIndex = idxP < 0 ? 0 : idxP;
         }
         if (cbTheme != null)
         {
@@ -1038,6 +1365,7 @@ public class MainForm : Form
         if (miSleep != null) miSleep.Text = Texts.T("tray_sleep");
         if (miHibernate != null) miHibernate.Text = Texts.T("tray_hibernate");
         if (miCheckUpd != null) miCheckUpd.Text = Texts.T("tray_checkupd");
+        if (miTouchpad != null) miTouchpad.Text = Texts.T(_ptpDetected ? "tray_touchpad_ptp" : "tray_touchpad");
         if (_update != null && miUpdate != null && miUpdate.Visible)
             miUpdate.Text = string.Format(Texts.T(string.IsNullOrEmpty(_update.AssetUrl) ? "tray_update" : "tray_download"), _update.Version);
         RefreshBatteryStatus();
@@ -1153,10 +1481,9 @@ public class MainForm : Form
 
     void SaveClick(object sender, EventArgs e)
     {
+        SaveProfileEditorValues();
         _s.ScreenEnabled = chkScreen.Checked;
-        _s.IdleSec = numIdle.Value;
-        _s.DimPct = numDim.Value;
-        _s.NormalPct = numNormal.Value;
+        _s.ProfileEdit = EditingBatteryProfile ? "battery" : "ac";
         _s.TouchEnabled = chkTouch.Checked;
         _s.BlockMs = numBlock.Value;
         _s.KeyEnabled = chkKey.Checked;
@@ -1168,7 +1495,8 @@ public class MainForm : Form
         _s.TopMost = chkTopMost.Checked;
         _s.Accent = ThemeManager.AccentKeys[Math.Max(0, cbAccent.SelectedIndex)];
         _s.AutoUpdateCheck = chkAutoUpdate.Checked;
-        if (_s.DimPct > _s.NormalPct) { _s.DimPct = _s.NormalPct; numDim.Value = _s.DimPct; }
+        ClampProfiles();
+        if (!EditingBatteryProfile) numDim.Value = _s.DimPct;
         _s.Save();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
@@ -1205,7 +1533,9 @@ public class MainForm : Form
         chkAutoStart.Checked = d.AutoStart;
         chkTray.Checked = d.ShowTray;
         chkAutoUpdate.Checked = d.AutoUpdateCheck;
+        cbProfile.SelectedIndex = 0;
         _loading = false;
+        LoadProfileEditorValues();
         _s.Save();
         SetAutoStart(_s.AutoStart);
         tray.Visible = _s.ShowTray;
@@ -1245,10 +1575,23 @@ public class MainForm : Form
         _systemApplied = true;
         FitLabels();
         Calibrate();
+        _profileBattery = IsOnBattery();
         ApplyTitleBarTheme();
         Resize += FormResize;
         RefreshBatteryStatus();
         RefreshDriverStatus();
+        _alsAvailable = AmbientLight.Available;
+        _loading = true;
+        chkAutoBrightness.Enabled = _alsAvailable;
+        if (!_alsAvailable) { _s.AutoBrightness = false; _s.Save(); chkAutoBrightness.Checked = false; }
+        else chkAutoBrightness.Checked = _s.AutoBrightness;
+        numNormal.Enabled = !_s.AutoBrightness;
+        _loading = false;
+        _fnStandard = BootCampControl.ReadFnStandard();
+        _loading = true; chkFnStandard.Checked = _fnStandard; _loading = false;
+        _ptpDetected = BootCampControl.IsPrecisionTouchpad();
+        SyncTrayMenu();
+        if (_s.AutoBrightness && _alsAvailable) AutoBrightnessTick();
         if (_s.AutoUpdateCheck) CheckUpdates(false);
     }
 
@@ -1402,7 +1745,8 @@ public class MainForm : Form
             if (_dimmed && SetBrightness(EffNormalPct)) _dimmed = false;
             return;
         }
-        bool wantDim = _s.ScreenEnabled && IdleMs() >= (uint)(EffIdleSec * 1000) && _brightnessOk;
+        bool idleReached = IdleMs() >= (uint)(EffIdleSec * 1000);
+        bool wantDim = _s.ScreenEnabled && idleReached && _brightnessOk;
         if (wantDim && !_dimmed)
         {
             if (SetBrightness(EffDimPct)) _dimmed = true;
